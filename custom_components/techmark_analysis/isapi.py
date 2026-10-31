@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 
 import httpx
 
+from .core.faces import parse_face_search
 from .core.stream_parser import boundary_from_content_type
 from .core.xmlsafe import safe_fromstring
 
@@ -43,6 +44,9 @@ class HikClient:
         self._auth = httpx.DigestAuth(username, password)
 
     async def _request(self, method: str, path: str, content: bytes | None = None) -> ET.Element:
+        return _xml(await self._request_raw(method, path, content))
+
+    async def _request_raw(self, method: str, path: str, content: bytes | None = None) -> bytes:
         try:
             r = await self._c.request(method, self._base + path, auth=self._auth, content=content, timeout=10)
         except httpx.TimeoutException:
@@ -53,7 +57,7 @@ class HikClient:
             raise AuthError("authentication failed")
         if r.status_code != 200:
             raise CameraError(f"HTTP {r.status_code} on {path}")
-        return _xml(r.content)
+        return r.content
 
     async def device_info(self) -> dict[str, str]:
         r = await self._request("GET", "/System/deviceInfo")
@@ -82,8 +86,11 @@ class HikClient:
             f"<searchResultPosition>1</searchResultPosition><maxResults>{int(limit)}</maxResults>"
             f"<FDID>{int(fdid)}</FDID></FDSearchDescription>"
         ).encode()
-        r = await self._request("POST", "/Intelligent/FDLib/FDSearch", body)
-        return [{"name": _text(m, "name"), "fpid": _text(m, "FPID")} for m in r.iter("MatchElement")]
+        raw = await self._request_raw("POST", "/Intelligent/FDLib/FDSearch", body)
+        try:
+            return parse_face_search(raw)
+        except (ET.ParseError, ValueError, RecursionError) as err:
+            raise CameraError("invalid or unsafe XML from camera") from err
 
     @asynccontextmanager
     async def alert_stream(self, read_timeout: float) -> AsyncIterator[tuple[str, AsyncIterator[bytes]]]:

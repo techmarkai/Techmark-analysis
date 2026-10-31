@@ -1,7 +1,6 @@
 import random
 
 from conftest import BOUNDARY, FAKE_JPEG, part
-
 from core.stream_parser import MultipartParser, boundary_from_content_type
 
 

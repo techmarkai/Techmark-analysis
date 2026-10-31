@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<FDSearchResult version="2.0" xmlns="http://www.hikvision.com/ver20/XMLSchema">
+<searchID>TM1</searchID><responseStatus>true</responseStatus><responseStatusStrg>OK</responseStatusStrg>
+<numOfMatches>4</numOfMatches><totalMatches>4</totalMatches>
+<MatchList>
+<MatchElement><FDID>1</FDID><PID>1</PID><bornTime>1990-01-01</bornTime><name>Test Employee A</name><sex>male</sex>
+<certificateType>ID</certificateType><certificateNumber>00000</certificateNumber><picURL>http://192.0.2.30/picture/redacted</picURL>
+<PersonInfoExtendList><PersonInfoExtend><id>1</id><enable>false</enable><name>Custom Field 1</name><value></value></PersonInfoExtend></PersonInfoExtendList>
+<ModelingStatus><FDID>1</FDID><PID>1</PID><name>Test Employee A</name><status>success</status></ModelingStatus></MatchElement>
+<MatchElement><FDID>1</FDID><PID>27</PID><name>Test Employee B</name></MatchElement>
+<MatchElement><FDID>1</FDID><name>No Pid Person</name></MatchElement>
+<MatchElement><FDID>1</FDID><PID>12;DROP</PID><name>Bad Pid Person</name></MatchElement>
+</MatchList></FDSearchResult>

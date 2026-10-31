@@ -7,7 +7,15 @@ import logging
 import xml.etree.ElementTree as ET
 from datetime import datetime
 
-from .models import Event, FaceCapture, FaceMatch, FaceUnmatched, Heartbeat, LineCrossing, RawEvent
+from .models import (
+    Event,
+    FaceCapture,
+    FaceMatch,
+    FaceUnmatched,
+    Heartbeat,
+    LineCrossing,
+    RawEvent,
+)
 from .stream_parser import Part
 from .xmlsafe import safe_fromstring
 

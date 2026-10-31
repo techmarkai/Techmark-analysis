@@ -66,8 +66,6 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities: AddC
 
 class TechmarkSensor(TechmarkEntity, SensorEntity):
     entity_description: TechmarkSensorDescription
-    # Attendance names/times are kept out of HA history; the integration's own DB holds them.
-    _unrecorded_attributes = frozenset({"employees"})
 
     def __init__(self, runtime, description: TechmarkSensorDescription) -> None:
         super().__init__(runtime, description.key)
@@ -96,14 +94,3 @@ class TechmarkSensor(TechmarkEntity, SensorEntity):
             today = dt_util.now().date()
             return dt_util.start_of_local_day(date(today.year, today.month, 1))
         return None
-
-    @property
-    def extra_state_attributes(self) -> dict | None:
-        if self.entity_description.key != "employees_present_today":
-            return None
-        return {
-            "employees": [
-                {"name": a["name"], "first_seen": a["first_seen"], "last_seen": a["last_seen"]}
-                for a in self.rt.today.get("attendance", [])
-            ]
-        }

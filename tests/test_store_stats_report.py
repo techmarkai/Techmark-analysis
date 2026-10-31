@@ -4,7 +4,6 @@ from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 import pytest
-
 from core.models import FaceMatch, FaceUnmatched
 from core.processor import Processor, ProcessorConfig
 from core.report import render_csv, render_markdown

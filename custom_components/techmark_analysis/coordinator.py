@@ -14,7 +14,10 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.dispatcher import async_dispatcher_send
-from homeassistant.helpers.event import async_track_time_change, async_track_time_interval
+from homeassistant.helpers.event import (
+    async_track_time_change,
+    async_track_time_interval,
+)
 from homeassistant.util import dt as dt_util
 
 from .const import (
@@ -41,7 +44,14 @@ from .const import (
 from .core.attendance import attendance_rows, render_attendance_csv, resolve_range
 from .core.correlator import Correlator
 from .core.decoder import decode
-from .core.models import FaceCapture, FaceMatch, FaceUnmatched, LineCrossing, SessionUpdate, UnmatchedCounted
+from .core.models import (
+    FaceCapture,
+    FaceMatch,
+    FaceUnmatched,
+    LineCrossing,
+    SessionUpdate,
+    UnmatchedCounted,
+)
 from .core.processor import CUSTOMER, EMPLOYEE, Processor, ProcessorConfig
 from .core.report import render_csv, render_markdown
 from .core.stats import daily, monthly

@@ -2,10 +2,16 @@ import json
 from pathlib import Path
 
 from conftest import FAKE_JPEG, fixture_bytes, fixture_json
-
 from core.correlator import Correlator, image_ids
 from core.decoder import decode
-from core.models import FaceCapture, FaceMatch, FaceUnmatched, Heartbeat, LineCrossing, RawEvent
+from core.models import (
+    FaceCapture,
+    FaceMatch,
+    FaceUnmatched,
+    Heartbeat,
+    LineCrossing,
+    RawEvent,
+)
 from core.stream_parser import Part
 
 J = {"content-type": "application/json"}

@@ -4,8 +4,12 @@ from datetime import date, datetime, timezone
 from zoneinfo import ZoneInfo
 
 import pytest
-
-from core.attendance import CSV_HEADER, attendance_rows, render_attendance_csv, resolve_range
+from core.attendance import (
+    CSV_HEADER,
+    attendance_rows,
+    render_attendance_csv,
+    resolve_range,
+)
 from core.models import FaceMatch, FaceUnmatched
 from core.processor import Processor, ProcessorConfig
 from core.stats import daily

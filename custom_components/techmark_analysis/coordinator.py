@@ -38,6 +38,7 @@ from .const import (
     SIGNAL_UPDATE,
     WATCHDOG_SECONDS,
 )
+from .core.attendance import attendance_rows, render_attendance_csv, resolve_range
 from .core.correlator import Correlator
 from .core.decoder import decode
 from .core.models import FaceCapture, FaceMatch, FaceUnmatched, LineCrossing, SessionUpdate, UnmatchedCounted
@@ -283,6 +284,29 @@ class TechmarkRuntime:
         today = dt_util.now().date()
         if today.day == 1:
             await self.async_generate_report("month", today - timedelta(days=1))
+
+    async def async_export_attendance(self, kind: str, start: date | None, end: date | None) -> dict:
+        """Write the attendance CSV for a range (HA time zone). Raises ValueError on a bad range."""
+        first, last = resolve_range(kind, dt_util.now().date(), start, end)
+        rows = await self._job(attendance_rows, self.store, first, last)
+        text = render_attendance_csv(rows)
+        name = f"attendance_{first.isoformat()}_{last.isoformat()}.csv"
+        folder = Path(self.hass.config.path(REPORT_DIR))
+
+        def write() -> str:
+            folder.mkdir(exist_ok=True)
+            path = folder / name
+            path.write_text(text, encoding="utf-8-sig", newline="")  # BOM: Excel opens Unicode names correctly
+            return str(path)
+
+        return {
+            "range": kind,
+            "start_date": first.isoformat(),
+            "end_date": last.isoformat(),
+            "rows": len(rows),
+            "file": await self._job(write),
+            "filename": name,
+        }
 
     async def async_generate_report(self, period: str, day: date) -> dict:
         now = dt_util.utcnow()

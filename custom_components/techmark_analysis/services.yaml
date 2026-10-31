@@ -20,3 +20,23 @@ list_faces:
           options:
             - employee
             - customer
+export_attendance:
+  fields:
+    range:
+      required: true
+      selector:
+        select:
+          options:
+            - today
+            - yesterday
+            - this_week
+            - this_month
+            - custom
+    start_date:
+      required: false
+      selector:
+        date:
+    end_date:
+      required: false
+      selector:
+        date:

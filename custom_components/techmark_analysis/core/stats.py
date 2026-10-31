@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, time, timezone
 
+from .attendance import attendance_rows
 from .store import Store
 
 
@@ -32,16 +33,13 @@ def _period(store: Store, day_from: str, day_to: str, now: datetime) -> dict:
     )
     attendance = [
         {
-            "day": d,
-            "human_id": h,
-            "name": n,
-            "first_seen": datetime.fromtimestamp(f, timezone.utc).astimezone(store.tz).isoformat(timespec="seconds"),
-            "last_seen": datetime.fromtimestamp(last, timezone.utc).astimezone(store.tz).isoformat(timespec="seconds"),
+            "day": r["day"],
+            "human_id": r["human_id"],
+            "name": r["name"],
+            "first_seen": r["first"].isoformat(timespec="seconds"),
+            "last_seen": r["last"].isoformat(timespec="seconds"),
         }
-        for d, h, n, f, last in store.query(
-            "SELECT day, human_id, name, first, last FROM attendance WHERE day BETWEEN ? AND ? ORDER BY day, first",
-            span,
-        )
+        for r in attendance_rows(store, date.fromisoformat(day_from), date.fromisoformat(day_to))
     ]
     after_last = date.fromordinal(date.fromisoformat(day_to).toordinal() + 1)
     start, end = _bounds(store, date.fromisoformat(day_from), after_last)

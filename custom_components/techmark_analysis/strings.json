@@ -3,11 +3,18 @@
     "step": {
       "user": {
         "title": "Hikvision camera",
-        "data": {"host": "Host", "username": "Username", "password": "Password"}
+        "data": {
+          "host": "Host",
+          "username": "Username",
+          "password": "Password"
+        }
       },
       "reauth_confirm": {
         "title": "Re-enter camera credentials",
-        "data": {"username": "Username", "password": "Password"}
+        "data": {
+          "username": "Username",
+          "password": "Password"
+        }
       }
     },
     "error": {
@@ -50,14 +57,43 @@
       "name": "Generate report",
       "description": "Generate a daily or monthly report (Markdown and CSV in /config/techmark_reports).",
       "fields": {
-        "period": {"name": "Period", "description": "day or month"},
-        "date": {"name": "Date", "description": "Day to report, or any day in the month. Defaults to today."}
+        "period": {
+          "name": "Period",
+          "description": "day or month"
+        },
+        "date": {
+          "name": "Date",
+          "description": "Day to report, or any day in the month. Defaults to today."
+        }
       }
     },
     "list_faces": {
       "name": "List faces",
       "description": "List names in a camera face library (read-only).",
-      "fields": {"library": {"name": "Library", "description": "employee or customer"}}
+      "fields": {
+        "library": {
+          "name": "Library",
+          "description": "employee or customer"
+        }
+      }
+    },
+    "export_attendance": {
+      "name": "Export attendance CSV",
+      "description": "Admin only. Employee first-in / last-seen per day as CSV (Home Assistant time zone). Last seen is the last camera match, not a confirmed departure.",
+      "fields": {
+        "range": {
+          "name": "Range",
+          "description": "today, yesterday, this_week (Monday start), this_month, or custom"
+        },
+        "start_date": {
+          "name": "Start date",
+          "description": "First day (custom range)"
+        },
+        "end_date": {
+          "name": "End date",
+          "description": "Last day (custom range), at most 366 days"
+        }
+      }
     }
   }
 }

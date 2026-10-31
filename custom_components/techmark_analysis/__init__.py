@@ -16,6 +16,7 @@ from .const import DOMAIN
 from .coordinator import TechmarkRuntime
 from .isapi import AuthError, CameraError, HikClient
 from .services import async_setup_services
+from .views import AttendanceExportView
 
 _LOGGER = logging.getLogger(__name__)
 PLATFORMS = [Platform.SENSOR, Platform.BINARY_SENSOR]
@@ -26,6 +27,7 @@ type TechmarkConfigEntry = ConfigEntry[TechmarkRuntime]
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     async_setup_services(hass)
+    hass.http.register_view(AttendanceExportView())
     return True
 
 

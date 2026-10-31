@@ -1,0 +1,58 @@
+{
+ "ipAddress": "192.0.2.30",
+ "ipv6Address": "::ffff:192.0.2.30",
+ "portNo": 80,
+ "protocol": "HTTP",
+ "macAddress": "00:00:00:00:00:00",
+ "channelID": 1,
+ "dateTime": "2019-01-01T01:27:53+08:00",
+ "activePostCount": 1,
+ "isDataRetransmission": false,
+ "eventType": "faceCapture",
+ "eventState": "active",
+ "eventDescription": "faceCapture",
+ "channelName": "Camera 01",
+ "faceBackgroundImageResolution": {
+  "height": 1504,
+  "width": 2560
+ },
+ "faceCapture": [
+  {
+   "targetAttrs": {
+    "deviceName": "IP CAMERA",
+    "deviceChannel": 1,
+    "deviceId": "00000000-0000-0000-0000-000000000000",
+    "faceTime": "2019-01-01T01:27:53+08:00",
+    "contentID": "backgroundImage",
+    "pId": "TESTPID-0004"
+   },
+   "faces": [
+    {
+     "faceId": 5,
+     "faceRect": {
+      "height": 0.14,
+      "width": 0.062,
+      "x": 0.256,
+      "y": 0.702
+     },
+     "stayDuration": 1000,
+     "faceScore": 15,
+     "captureEndMark": true,
+     "FacePictureRect": {
+      "height": 0.41,
+      "width": 0.55,
+      "x": 0.225,
+      "y": 0.358
+     }
+    }
+   ],
+   "uid": "04b37008-30de-44f7-9a20-e294d21b20c3"
+  }
+ ],
+ "GPS": {
+  "divisionEW": "E",
+  "longitude": 0,
+  "divisionNS": "N",
+  "latitude": 0
+ }
+}

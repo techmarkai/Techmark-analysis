@@ -1,0 +1,74 @@
+{
+ "ipAddress": "192.0.2.30",
+ "ipv6Address": "::ffff:192.0.2.30",
+ "portNo": 80,
+ "protocol": "HTTP",
+ "macAddress": "00:00:00:00:00:00",
+ "channelID": 1,
+ "dateTime": "2019-01-01T01:33:23+08:00",
+ "activePostCount": 1,
+ "isDataRetransmission": false,
+ "eventState": "active",
+ "channelName": "Camera 01",
+ "eventType": "alarmResult",
+ "eventDescription": "alarmResult",
+ "capturePictureResolution": {
+  "height": 1504,
+  "width": 2560
+ },
+ "alarmResult": [
+  {
+   "modelData": "REDACTED",
+   "errorCode": 1073750078,
+   "errorMsg": "contrastFailed",
+   "targetAttrs": {
+    "deviceId": "00000000-0000-0000-0000-000000000000",
+    "deviceChannel": 1,
+    "deviceName": "IP CAMERA",
+    "faceTime": "2019-01-01T01:33:23+08:00",
+    "rect": {
+     "height": 0.234,
+     "width": 0.112,
+     "x": 0.331,
+     "y": 0.585
+    },
+    "contentID": "backgroundImage",
+    "pId": "TESTPID-0003"
+   },
+   "faces": [
+    {
+     "faceId": 13,
+     "faceRect": {
+      "height": 0.095,
+      "width": 0.056,
+      "x": 0.359,
+      "y": 0.67
+     },
+     "recommendFaceRect": {
+      "height": 0.409,
+      "width": 0.5,
+      "x": 0.25,
+      "y": 0.363
+     },
+     "score": {
+      "value": 84
+     },
+     "modeldata": "REDACTED",
+     "identify": [
+      {
+       "relationId": "",
+       "maxsimilarity": 0.06
+      }
+     ],
+     "stayDuration": 15000
+    }
+   ]
+  }
+ ],
+ "GPS": {
+  "divisionEW": "E",
+  "longitude": 0,
+  "divisionNS": "N",
+  "latitude": 0
+ }
+}

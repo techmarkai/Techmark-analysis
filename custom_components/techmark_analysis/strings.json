@@ -1,0 +1,63 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Hikvision camera",
+        "data": {"host": "Host", "username": "Username", "password": "Password"}
+      },
+      "reauth_confirm": {
+        "title": "Re-enter camera credentials",
+        "data": {"username": "Username", "password": "Password"}
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot reach the camera.",
+      "invalid_auth": "The camera rejected the credentials."
+    },
+    "abort": {
+      "already_configured": "This camera is already configured.",
+      "reauth_successful": "Credentials updated."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Techmark Analysis options",
+        "data": {
+          "min_face_quality": "Minimum face quality for unmatched faces (0-100)",
+          "employee_window_min": "Employee visit window (minutes)",
+          "customer_window_min": "Customer visit window (minutes)",
+          "employee_fdid": "Employee face library ID",
+          "customer_fdid": "Customer face library ID",
+          "daily_report_time": "Daily report time",
+          "retention_days": "Data retention (days)"
+        }
+      }
+    }
+  },
+  "issues": {
+    "clock_skew": {
+      "title": "Camera clock is off",
+      "description": "The camera clock differs from Home Assistant by {seconds} seconds. Statistics use Home Assistant time, but the camera time should be corrected (NTP)."
+    },
+    "app_state_drift": {
+      "title": "Camera analytics apps not running",
+      "description": "These required camera apps are not running: {apps}. Face events may be missing. Techmark Analysis never starts or stops camera apps; check the camera."
+    }
+  },
+  "services": {
+    "generate_report": {
+      "name": "Generate report",
+      "description": "Generate a daily or monthly report (Markdown and CSV in /config/techmark_reports).",
+      "fields": {
+        "period": {"name": "Period", "description": "day or month"},
+        "date": {"name": "Date", "description": "Day to report, or any day in the month. Defaults to today."}
+      }
+    },
+    "list_faces": {
+      "name": "List faces",
+      "description": "List names in a camera face library (read-only).",
+      "fields": {"library": {"name": "Library", "description": "employee or customer"}}
+    }
+  }
+}

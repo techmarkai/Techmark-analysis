@@ -1,0 +1,22 @@
+generate_report:
+  fields:
+    period:
+      required: true
+      selector:
+        select:
+          options:
+            - day
+            - month
+    date:
+      required: false
+      selector:
+        date:
+list_faces:
+  fields:
+    library:
+      required: true
+      selector:
+        select:
+          options:
+            - employee
+            - customer

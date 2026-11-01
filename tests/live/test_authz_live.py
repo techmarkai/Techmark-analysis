@@ -57,7 +57,8 @@ def test_non_admin_sees_no_employee_details():
     status, body = req("/api/states/sensor.techmark_employees_present_today", USER)
     assert status == 200
     attrs = json.loads(body)["attributes"]
-    assert "employees" not in attrs and not any("name" in k for k in attrs)
+    # Only standard entity metadata; no per-employee names or timestamps.
+    assert set(attrs) <= {"friendly_name", "state_class", "last_reset", "unit_of_measurement", "icon"}
 
 
 def test_anonymous_and_bad_signatures_rejected():

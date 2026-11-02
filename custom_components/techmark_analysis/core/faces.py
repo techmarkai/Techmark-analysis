@@ -23,6 +23,7 @@ def parse_face_search(body: bytes) -> list[dict[str, str | None]]:
         name_el = m.find("name")
         pid_el = m.find("PID")
         pid = (pid_el.text or "").strip() if pid_el is not None else ""
+        ms = m.find("ModelingStatus")
         chid_el = m.find("customHumanID")
         if chid_el is None:
             chid_el = m.find("ModelingStatus/customHumanID")
@@ -31,16 +32,29 @@ def parse_face_search(body: bytes) -> list[dict[str, str | None]]:
                 "name": (name_el.text or "").strip() if name_el is not None else "",
                 "person_id": pid if _PID.fullmatch(pid) else None,
                 "custom_human_id": (chid_el.text or "").strip() if chid_el is not None else "",
+                "modeling_status": (ms.findtext("status") or "").strip() if ms is not None else "",
             }
         )
     return out
 
 
+def exact_records(records: list[dict], name: str) -> list[dict]:
+    """Records that are exactly ours. The camera's name search may be fuzzy, so require an exact
+    name, and reject any record whose reported customHumanID differs (empty = not reported)."""
+    return [r for r in records if r["person_id"] and r["name"] == name and r["custom_human_id"] in ("", name)]
+
+
 def exact_pids(records: list[dict], name: str) -> list[str]:
-    """PIDs of records that are exactly ours. The camera's name search may be fuzzy, so require an
-    exact name, and reject any record whose reported customHumanID differs (empty = not reported)."""
-    return [
-        r["person_id"]
-        for r in records
-        if r["person_id"] and r["name"] == name and r["custom_human_id"] in ("", name)
-    ]
+    return [r["person_id"] for r in exact_records(records, name)]
+
+
+def normalize_modeling(status: str) -> str:
+    """Camera ModelingStatus -> success | failed | pending | unknown. Observed: success, failed."""
+    s = (status or "").strip().lower()
+    if s in ("success", "succ", "succeeded", "modeled"):
+        return "success"
+    if s in ("failed", "fail", "failure", "error"):
+        return "failed"
+    if s in ("modeling", "processing", "wait", "waiting", "none", "notmodeled", "unmodeled"):
+        return "pending"
+    return "unknown"

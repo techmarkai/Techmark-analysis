@@ -49,7 +49,13 @@ from .core.attendance import attendance_rows, render_attendance_csv, resolve_ran
 from .core.correlator import Correlator
 from .core.decoder import decode
 from .core.enroller import CameraRejected as EnrollRejected
-from .core.enroller import CameraTransient, EnrollConfig, Enroller, FaceUnusable
+from .core.enroller import (
+    CameraTransient,
+    EnrollConfig,
+    Enroller,
+    EnrollPersistence,
+    FaceUnusable,
+)
 from .core.facecrop import prepare_face
 from .core.models import (
     FaceCapture,
@@ -106,7 +112,13 @@ class TechmarkRuntime:
             reserve_visitor=lambda: self._job(self.store.create_visitor, dt_util.utcnow()),
             link=lambda pid, vno: self._job(self.store.link_camera_id, pid, vno),
             add_face=self._enroll_add_face,
-            find_by_name=lambda name: self.client.find_face_pids_by_name(self._customer_fdid, name),
+            find_by_name=self._enroll_find,
+            check_status=self._enroll_status,
+            persist=EnrollPersistence(
+                verifying=lambda vno, name, pids: self._job(self.store.save_verifying, vno, name, pids, dt_util.utcnow()),
+                finished=lambda vno: self._job(self.store.drop_verifying, vno),
+                review=self._enroll_review,
+            ),
         )
         self._last_snapshot: list[dict] = []
         self.connected = False
@@ -137,6 +149,8 @@ class TechmarkRuntime:
         if last is not None and now - last > timedelta(seconds=5):
             await self._job(self.store.start_gap, last, "home_assistant_offline")
         self.enroller.cfg.salt = await self._job(self.store.enroll_salt)
+        # Modeling checks need no image: resume any that were in progress before the restart.
+        self.enroller.resume_verification(await self._job(self.store.load_verifying), monotonic())
         left = await self._job(self.store.take_pending)
         if left:
             # alertStream has no replay and crops were memory-only: these candidates cannot be recovered.
@@ -368,6 +382,36 @@ class TechmarkRuntime:
             raise EnrollRejected(str(err)) from err
         except CameraError as err:  # unreachable / timeout / auth: retry after lookup
             raise CameraTransient(str(err)) from err
+
+    async def _enroll_find(self, name: str) -> list[str]:
+        try:
+            return await self.client.find_face_pids_by_name(self._customer_fdid, name)
+        except CameraError as err:
+            raise CameraTransient(str(err)) from err
+
+    async def _enroll_status(self, name: str) -> list[tuple[str, str]]:
+        try:
+            return await self.client.face_status_by_name(self._customer_fdid, name)
+        except CameraError as err:
+            raise CameraTransient(str(err)) from err
+
+    async def _enroll_review(self, visitor_no: int, name: str, pids: list[str], status: str) -> None:
+        """Flag for administrator review; never deletes or overwrites camera records."""
+        await self._job(self.store.add_review, visitor_no, name, pids, status, dt_util.utcnow())
+        reviews = await self._job(self.store.reviews)
+        _LOGGER.warning("Enrollment needs review: visitor %s (%s) modeling %s", visitor_no, name, status)
+        ir.async_create_issue(
+            self.hass,
+            DOMAIN,
+            "enrollment_review_needed",
+            is_fixable=False,
+            severity=ir.IssueSeverity.WARNING,
+            translation_key="enrollment_review_needed",
+            translation_placeholders={
+                "count": str(len(reviews)),
+                "records": ", ".join(f"{r['camera_name']} ({r['status']})" for r in reviews[-10:]),
+            },
+        )
 
     async def _enroll_tick(self, _now=None) -> None:
         try:

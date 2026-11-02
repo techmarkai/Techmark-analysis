@@ -51,6 +51,10 @@ CREATE TABLE IF NOT EXISTS erased_visitors(visitor_no INTEGER PRIMARY KEY, erase
 -- Enrollment queue accounting: non-biometric metadata only (detection id, score, number).
 CREATE TABLE IF NOT EXISTS enroll_pending(key TEXT PRIMARY KEY, saved REAL NOT NULL, score INTEGER,
   visitor_no INTEGER, has_crop INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS enroll_verify(visitor_no INTEGER PRIMARY KEY, name TEXT NOT NULL,
+  pids TEXT NOT NULL, created REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS enroll_review(visitor_no INTEGER PRIMARY KEY, name TEXT NOT NULL,
+  pids TEXT NOT NULL, status TEXT NOT NULL, at REAL NOT NULL);
 CREATE TABLE IF NOT EXISTS enroll_losses(id INTEGER PRIMARY KEY, at REAL NOT NULL, reason TEXT NOT NULL,
   count INTEGER NOT NULL);
 """
@@ -171,6 +175,8 @@ class Store:
             vno = row[0]
         if db.execute("SELECT 1 FROM erased_visitors WHERE visitor_no=?", (vno,)).fetchone():
             return  # erased on request: camera matches no longer recorded
+        if db.execute("SELECT 1 FROM enroll_review WHERE visitor_no=? AND status='failed'", (vno,)).fetchone():
+            return  # retired: camera failed to model this enrollment
         db.execute(
             "INSERT INTO visit_days(visitor_no, day, first, last, events) VALUES(?,?,?,?,1)"
             " ON CONFLICT(visitor_no, day) DO UPDATE SET"
@@ -234,6 +240,36 @@ class Store:
 
         self._write(run)
         return out
+
+    def save_verifying(self, visitor_no: int, name: str, pids: list[str], now: datetime) -> None:
+        self._write(lambda db: db.execute(
+            "INSERT INTO enroll_verify(visitor_no, name, pids, created) VALUES(?,?,?,?)"
+            " ON CONFLICT(visitor_no) DO UPDATE SET pids=excluded.pids",
+            (visitor_no, name, ",".join(pids), _ts(now)),
+        ))
+
+    def drop_verifying(self, visitor_no: int) -> None:
+        self._write(lambda db: db.execute("DELETE FROM enroll_verify WHERE visitor_no=?", (visitor_no,)))
+
+    def load_verifying(self) -> list[tuple[int, str, list[str]]]:
+        return [
+            (vno, name, [p for p in pids.split(",") if p])
+            for vno, name, pids in self.query("SELECT visitor_no, name, pids FROM enroll_verify ORDER BY visitor_no")
+        ]
+
+    def add_review(self, visitor_no: int, name: str, pids: list[str], status: str, now: datetime) -> None:
+        """Flag a camera record for administrator review. Never deletes anything."""
+        self._write(lambda db: db.execute(
+            "INSERT INTO enroll_review(visitor_no, name, pids, status, at) VALUES(?,?,?,?,?)"
+            " ON CONFLICT(visitor_no) DO UPDATE SET status=excluded.status, pids=excluded.pids, at=excluded.at",
+            (visitor_no, name, ",".join(pids), status, _ts(now)),
+        ))
+
+    def reviews(self) -> list[dict]:
+        return [
+            {"visitor_no": v, "camera_name": n, "camera_ids": [p for p in pids.split(",") if p], "status": s}
+            for v, n, pids, s in self.query("SELECT visitor_no, name, pids, status FROM enroll_review ORDER BY visitor_no")
+        ]
 
     def record_enroll_losses(self, losses: dict[str, int], now: datetime) -> None:
         self._write(lambda db: db.executemany(

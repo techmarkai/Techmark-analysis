@@ -10,10 +10,12 @@ from core.enroller import (
     CameraTransient,
     EnrollConfig,
     Enroller,
+    EnrollPersistence,
     FaceUnusable,
     camera_name,
+    summarize,
 )
-from core.faces import exact_pids
+from core.faces import exact_pids, normalize_modeling
 from core.models import FaceMatch, FaceUnmatched
 from core.processor import Processor, ProcessorConfig
 from core.store import Store
@@ -31,6 +33,16 @@ def ev(pid, score=90):
 class Fake:
     def __init__(self, add_results=None, found=None):
         self.next_vno, self.links, self.added, self.add_results, self.found = 0, [], [], list(add_results or []), found or []
+        self.status_results, self.checked, self.log = [], [], []
+        self.persist = EnrollPersistence(
+            verifying=self._p("verifying"), finished=self._p("finished"), review=self._p("review")
+        )
+
+    def _p(self, kind):
+        async def rec(*args):
+            self.log.append((kind, *args))
+
+        return rec
 
     async def reserve(self):
         self.next_vno += 1
@@ -49,10 +61,18 @@ class Fake:
     async def find(self, name):
         return self.found
 
+    async def status(self, name):
+        self.checked.append(name)
+        r = self.status_results.pop(0) if self.status_results else [("900", "success")]
+        if isinstance(r, Exception):
+            raise r
+        return r
+
 
 def make(fake, **cfg):
+    cfg = {"verify_first_seconds": 0, **cfg}
     return Enroller(EnrollConfig(enabled=True, image_wait_seconds=10, retry_base_seconds=30, salt=SALT, **cfg),
-                    fake.reserve, fake.link, fake.add_face, fake.find)
+                    fake.reserve, fake.link, fake.add_face, fake.find, fake.status, fake.persist)
 
 
 def run(coro):
@@ -200,7 +220,7 @@ def test_restart_loss_is_recorded_not_silent(tmp_path):
         return s.create_visitor(t)
 
     f = Fake(add_results=[CameraTransient("down")])
-    e = Enroller(EnrollConfig(enabled=True, salt=salt), reserve, f.link, f.add_face, f.find)
+    e = Enroller(EnrollConfig(enabled=True, salt=salt), reserve, f.link, f.add_face, f.find, f.status, f.persist)
     queue(e, "a", 0)
     queue(e, "b", 0, crop=None)
     run(e.tick(1))  # "a" holds number 1 after a failed upload; "b" awaits its image
@@ -272,3 +292,103 @@ def test_face_crop_validates_and_fits_upload_limit():
         prepare_face(scene, FaceUnmatched(90, 0, {"x": 0.95, "y": 0, "width": 0.1, "height": 0.1}, REC, None), 10)
     with pytest.raises(FaceUnusable):
         prepare_face(b"not a jpeg", ev("a"), 10)
+
+
+# ---- modeling verification -------------------------------------------------
+
+
+def test_upload_is_not_enrollment_until_modeling_succeeds():
+    f = Fake()
+    f.status_results = [[("900", "pending")], [("900", "success")]]
+    e = make(f, verify_first_seconds=10)
+    queue(e, "a", 0)
+    assert run(e.tick(1)) == [] and e.stats["uploaded"] == 1 and e.stats["enrolled"] == 0
+    assert e.verifying == 1 and f.log[0] == ("verifying", 1, name(1), ["900"])
+    assert run(e.tick(5)) == [] and f.checked == []  # first check not due yet
+    assert run(e.tick(11)) == [] and e.verifying == 1  # pending -> backoff
+    assert run(e.tick(30)) == [] and len(f.checked) == 1  # next check at 11 + 20
+    assert run(e.tick(31)) == [1] and e.stats["enrolled"] == 1 and e.verifying == 0
+    assert ("finished", 1) in f.log and not any(x[0] == "review" for x in f.log)
+
+
+def test_modeling_failure_retires_flags_and_never_reuploads():
+    f = Fake()
+    f.status_results = [[("900", "failed")]]
+    e = make(f)
+    queue(e, "a", 0)
+    assert run(e.tick(1)) == [] and e.stats["enrolled"] == 0
+    assert ("review", 1, name(1), ["900"], "failed") in f.log and ("finished", 1) in f.log
+    assert e.drain_losses() == {"modeling_failed": 1}
+    run(e.tick(500))
+    assert f.added == [name(1)]  # no second upload for the failed identity
+    queue(e, "b", 600)  # same person returns unmatched: new detection, new number (camera cannot link them)
+    assert run(e.tick(601)) == [2] and f.added == [name(1), name(2)]
+
+
+def test_unknown_and_unavailable_states_retry_then_unverified():
+    f = Fake()
+    f.status_results = [[("900", "unknown")], CameraTransient("down"), [], [("900", "pending")]]
+    e = make(f, verify_first_seconds=1, verify_max_checks=4)
+    queue(e, "a", 0)
+    for t in (1, 3, 5, 9, 17, 50):
+        run(e.tick(t))
+    assert [k for k in e.stats if k.startswith("verify_")] == ["verify_unknown", "verify_unavailable", "verify_pending"]
+    assert e.stats["verify_unavailable"] == 2 and e.verifying == 0
+    assert ("review", 1, name(1), ["900"], "unverified") in f.log
+    assert e.drain_losses() == {"modeling_unverified": 1} and f.added == [name(1)]
+
+
+def test_status_summary_rules():
+    assert summarize(None) == "unavailable" and summarize([]) == "unavailable"
+    assert summarize([("1", "failed"), ("2", "success")]) == "success"  # one good record suffices
+    assert summarize([("1", "failed"), ("2", "failed")]) == "failed"
+    assert summarize([("1", "failed"), ("2", "pending")]) == "pending"
+    assert summarize([("1", "unknown")]) == "unknown"
+    assert [normalize_modeling(s) for s in ("success", "FAILED", "modeling", "", "weird")] == [
+        "success", "failed", "pending", "unknown", "unknown"]
+
+
+def test_upload_retry_then_verification_single_record():
+    f = Fake(add_results=[CameraTransient("timeout")], found=["950"])
+    f.status_results = [[("950", "success")]]
+    e = make(f)
+    queue(e, "a", 0)
+    run(e.tick(1))
+    assert run(e.tick(31)) == [1] and f.added == [name(1)] and f.checked == [name(1)]
+
+
+def test_restart_resumes_verification_without_image(tmp_path):
+    tz = ZoneInfo("Etc/GMT-3")
+    t = datetime(2026, 1, 5, 9, tzinfo=timezone.utc)
+    s = Store(str(tmp_path / "v.db"), tz)
+    s.create_visitor(t)
+    s.save_verifying(1, name(1), ["900"], t)
+    s.close()
+    s2 = Store(str(tmp_path / "v.db"), tz)  # restart
+    rows = s2.load_verifying()
+    assert rows == [(1, name(1), ["900"])]
+    f = Fake()
+    e = make(f)
+    e.resume_verification(rows, 0)
+    assert run(e.tick(0)) == [1] and f.added == [] and f.checked == [name(1)]  # checked, never re-uploaded
+    s2.drop_verifying(1)
+    assert s2.load_verifying() == []
+    s2.close()
+
+
+def test_failed_review_retires_visitor_and_preserves_history(tmp_path):
+    tz = ZoneInfo("Etc/GMT-3")
+    t = datetime(2026, 1, 5, 9, tzinfo=timezone.utc)
+    s = Store(str(tmp_path / "r.db"), tz)
+    p = Processor(ProcessorConfig())
+    s.apply(p.handle(FaceMatch("2", "Customers", "77", "", 0.9, 80, None), t))  # visitor 1 (existing history)
+    v2 = s.create_visitor(t)
+    s.link_camera_id("900", v2)
+    s.add_review(v2, name(v2), ["900"], "failed", t)
+    s.apply(Processor(ProcessorConfig()).handle(FaceMatch("2", "Customers", "900", "", 0.9, 80, None), t))
+    assert visitor_report(s, v2)["visit_days"] == 0  # retired: never counted
+    assert visitor_report(s, 1)["visit_days"] == 1  # existing history untouched
+    assert s.reviews() == [{"visitor_no": v2, "camera_name": name(v2), "camera_ids": ["900"], "status": "failed"}]
+    s.add_review(v2, name(v2), ["900"], "failed", t)  # idempotent
+    assert len(s.reviews()) == 1
+    s.close()

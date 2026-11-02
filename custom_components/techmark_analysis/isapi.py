@@ -9,7 +9,7 @@ from xml.sax.saxutils import escape as xml_escape
 
 import httpx
 
-from .core.faces import exact_pids, parse_face_search
+from .core.faces import exact_pids, exact_records, normalize_modeling, parse_face_search
 from .core.stream_parser import boundary_from_content_type
 from .core.xmlsafe import safe_fromstring
 
@@ -104,6 +104,23 @@ class HikClient:
         raw = await self._request_raw("POST", "/Intelligent/FDLib/FDSearch", body)
         try:
             return exact_pids(parse_face_search(raw), name)
+        except (ET.ParseError, ValueError, RecursionError) as err:
+            raise CameraError("invalid or unsafe XML from camera") from err
+
+    async def face_status_by_name(self, fdid: str, name: str) -> list[tuple[str, str]]:
+        """Read-only: [(PID, success|failed|pending|unknown)] for records exactly matching name."""
+        body = (
+            '<?xml version="1.0" encoding="UTF-8"?><FDSearchDescription version="2.0" '
+            'xmlns="http://www.hikvision.com/ver20/XMLSchema"><searchID>TECHMARK3</searchID>'
+            "<searchResultPosition>1</searchResultPosition><maxResults>10</maxResults>"
+            f"<FDID>{int(fdid)}</FDID><name>{xml_escape(name)}</name></FDSearchDescription>"
+        ).encode()
+        raw = await self._request_raw("POST", "/Intelligent/FDLib/FDSearch", body)
+        try:
+            return [
+                (r["person_id"], normalize_modeling(r["modeling_status"]))
+                for r in exact_records(parse_face_search(raw), name)
+            ]
         except (ET.ParseError, ValueError, RecursionError) as err:
             raise CameraError("invalid or unsafe XML from camera") from err
 

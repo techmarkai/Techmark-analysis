@@ -57,6 +57,10 @@
     "enrollment_candidates_lost": {
       "title": "Customer enrollment candidates were lost",
       "description": "{total} unknown-face candidate(s) could not be enrolled so far ({reasons}). restart: pending when Home Assistant restarted (face crops are kept in memory only); overflow: queue memory budget exceeded; no_image: the camera image never arrived; upload_failed: camera unreachable after all retries. These people can still be enrolled on a later visit."
+    },
+    "enrollment_review_needed": {
+      "title": "Customer face records need review",
+      "description": "{count} enrolled face record(s) could not be confirmed by the camera: {records}. failed = the camera could not build a face model (the record can never be recognised); its visitor number is retired. unverified = the camera did not report a result in time. To fix: open the camera web interface, Face Picture Library, Customers, find the record by name (TMV-...), check its picture and delete it if unusable. Techmark Analysis never deletes or overwrites camera records itself."
     }
   },
   "services": {

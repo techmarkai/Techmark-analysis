@@ -93,6 +93,28 @@ class HikClient:
         except (ET.ParseError, ValueError, RecursionError) as err:
             raise CameraError("invalid or unsafe XML from camera") from err
 
+    async def all_faces(self, fdid: str, max_records: int = 30000) -> list[dict]:
+        """Read-only: every record in a library (paged, 100 per request)."""
+        out: list[dict] = []
+        pos = 1
+        while len(out) < max_records:
+            body = (
+                '<?xml version="1.0" encoding="UTF-8"?><FDSearchDescription version="2.0" '
+                'xmlns="http://www.hikvision.com/ver20/XMLSchema"><searchID>TECHMARK4</searchID>'
+                f"<searchResultPosition>{pos}</searchResultPosition><maxResults>100</maxResults>"
+                f"<FDID>{int(fdid)}</FDID></FDSearchDescription>"
+            ).encode()
+            raw = await self._request_raw("POST", "/Intelligent/FDLib/FDSearch", body)
+            try:
+                page = parse_face_search(raw)
+            except (ET.ParseError, ValueError, RecursionError) as err:
+                raise CameraError("invalid or unsafe XML from camera") from err
+            out += page
+            if len(page) < 100:
+                break
+            pos += len(page)
+        return out
+
     async def find_face_pids_by_name(self, fdid: str, name: str) -> list[str]:
         """Read-only lookup used before an enrollment retry."""
         body = (

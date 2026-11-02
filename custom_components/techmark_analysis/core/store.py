@@ -20,6 +20,7 @@ from .models import (
     Session,
     SessionUpdate,
     UnmatchedCounted,
+    enrolled_identity,
 )
 
 SCHEMA_VERSION = 2
@@ -168,6 +169,15 @@ class Store:
     def _visit(self, db: sqlite3.Connection, camera_pid: str, ts: datetime) -> None:
         """One visit-day per visitor per local day; repeats only widen first/last and count events."""
         row = db.execute("SELECT visitor_no FROM visitor_camera_ids WHERE camera_pid=?", (camera_pid,)).fetchone()
+        ident = enrolled_identity(camera_pid)
+        if row is None and ident is not None:
+            salt = db.execute("SELECT value FROM meta WHERE key='enroll_salt'").fetchone()
+            if salt and salt[0] == ident[0] and db.execute(
+                "SELECT 1 FROM visitors WHERE visitor_no=?", (ident[1],)
+            ).fetchone():
+                # Our own enrollment: the name carries the permanent visitor number.
+                db.execute("INSERT INTO visitor_camera_ids(camera_pid, visitor_no) VALUES(?,?)", (camera_pid, ident[1]))
+                row = (ident[1],)
         if row is None:
             vno = self._new_visitor(db, ts)
             db.execute("INSERT INTO visitor_camera_ids(camera_pid, visitor_no) VALUES(?,?)", (camera_pid, vno))

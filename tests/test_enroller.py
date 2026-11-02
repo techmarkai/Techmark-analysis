@@ -163,7 +163,8 @@ def test_failed_enrollment_retried_with_same_number_no_duplicate_record():
     assert run(e.tick(10)) == []  # backing off
     f.found = ["950"]  # the first upload had actually succeeded
     assert run(e.tick(31)) == [1]
-    assert f.added == [name(1)] and ("950", 1) in f.links and f.next_vno == 1
+    assert f.added == [name(1)] and f.links == [(name(1), 1)] and f.next_vno == 1
+    assert ("verifying", 1, name(1), ["950"]) in f.log  # PID kept for verification only, not identity
 
 
 def test_retry_gives_up_counted_as_loss_number_retired():
@@ -392,3 +393,76 @@ def test_failed_review_retires_visitor_and_preserves_history(tmp_path):
     s.add_review(v2, name(v2), ["900"], "failed", t)  # idempotent
     assert len(s.reviews()) == 1
     s.close()
+
+
+# ---- camera PID reuse (camera reassigns PIDs after a record is deleted) ------------
+
+
+def test_identity_is_name_not_reusable_pid(tmp_path):
+    from core.models import enrolled_identity
+
+    tz = ZoneInfo("Etc/GMT-3")
+    t = datetime(2026, 11, 2, 18, tzinfo=timezone.utc)
+    s = Store(str(tmp_path / "p.db"), tz)
+    salt = s.enroll_salt()
+    old = s.create_visitor(t)
+    s.link_camera_id("1", old)  # legacy PID link of a record later deleted on the camera
+    new = s.create_visitor(t)
+    nm = camera_name(salt, new)
+    assert enrolled_identity(nm) == (salt, new)
+    p = Processor(ProcessorConfig())
+    # The camera reused PID "1" for the new record; the match event carries the record name.
+    s.apply(p.handle(FaceMatch("2", "Customers", "1", nm, 0.93, 80, None), t))
+    assert visitor_report(s, new)["visit_days"] == 1  # credited to the right visitor
+    assert visitor_report(s, old)["visit_days"] == 0  # not to the deleted record's visitor
+    assert nm in visitor_report(s, new)["camera_ids"]  # link self-healed from the name
+    s.close()
+
+
+def test_foreign_or_manual_names_fall_back_safely(tmp_path):
+    tz = ZoneInfo("Etc/GMT-3")
+    t = datetime(2026, 11, 2, 18, tzinfo=timezone.utc)
+    s = Store(str(tmp_path / "f.db"), tz)
+    s.enroll_salt()
+    p = Processor(ProcessorConfig())
+    s.apply(p.handle(FaceMatch("2", "Customers", "5", "TMV-00000000-000009", 0.9, 80, None), t))  # other DB salt
+    s.apply(p.handle(FaceMatch("2", "Customers", "6", "Manual Customer", 0.9, 80, None), t))  # added by hand
+    assert s.query("SELECT camera_pid, visitor_no FROM visitor_camera_ids ORDER BY visitor_no") == [
+        ("TMV-00000000-000009", 1), ("6", 2)]  # new visitors; never mapped onto our number 9
+    s.close()
+
+
+def test_link_failure_after_upload_never_reuploads_blindly():
+    f = Fake()
+    calls = {"n": 0}
+
+    async def flaky_link(pid, vno):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("db busy")
+        f.links.append((pid, vno))
+
+    e = Enroller(EnrollConfig(enabled=True, salt=SALT, verify_first_seconds=0, retry_base_seconds=30),
+                 f.reserve, flaky_link, f.add_face, f.find, f.status, f.persist)
+    queue(e, "a", 0)
+    assert run(e.tick(1)) == [] and e.stats["errors"] == 1 and e.pending == 1
+    f.found = ["900"]  # the record exists on the camera
+    assert run(e.tick(31)) == [1]
+    assert f.added == [name(1)]  # second attempt found it by name; no second upload
+    assert f.links == [(name(1), 1)] and f.next_vno == 1
+
+
+def test_reconcile_selects_only_our_records():
+    from core.faces import our_enrollments
+
+    recs = [
+        {"name": name(3), "person_id": "1", "custom_human_id": name(3), "modeling_status": "success"},
+        {"name": name(4), "person_id": "2", "custom_human_id": name(4), "modeling_status": "failed"},
+        {"name": "TMV-00000000-000005", "person_id": "3", "custom_human_id": "", "modeling_status": "success"},
+        {"name": name(6), "person_id": "4", "custom_human_id": "OTHER", "modeling_status": "success"},
+        {"name": "Manual", "person_id": "5", "custom_human_id": "", "modeling_status": "success"},
+    ]
+    assert our_enrollments(recs, SALT) == [
+        {"visitor_no": 3, "name": name(3), "pid": "1", "status": "success"},
+        {"visitor_no": 4, "name": name(4), "pid": "2", "status": "failed"},
+    ]

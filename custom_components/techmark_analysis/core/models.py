@@ -2,8 +2,19 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
+
+# Name/customHumanID HA gives camera records it enrolls. Camera PIDs are NOT permanent (the camera
+# reuses them after a record is deleted), so this name is the identity of enrolled customers.
+ENROLLED_NAME = re.compile(r"^TMV-([0-9a-f]{8})-(\d{6})$")
+
+
+def enrolled_identity(name: str | None) -> tuple[str, int] | None:
+    """(salt, visitor number) for an HA-enrolled camera record name, else None."""
+    m = ENROLLED_NAME.fullmatch(name or "")
+    return (m.group(1), int(m.group(2))) if m else None
 
 
 @dataclass(frozen=True, slots=True)

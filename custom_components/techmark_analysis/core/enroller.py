@@ -71,6 +71,7 @@ class _Candidate:
     visitor_no: int | None = None
     attempts: int = 0
     next_try: float = 0.0
+    tried: bool = False  # an upload was attempted: always look the name up before uploading again
 
 
 @dataclass
@@ -240,12 +241,29 @@ class Enroller:
                         self._remove(key)
                         self._lost("no_image")
                     continue
-                if await self._upload(cand, t) != "retry":
+                try:
+                    result = await self._upload(cand, t)
+                except Exception:  # noqa: BLE001 - unexpected failure: keep candidate, never re-upload blindly
+                    self.stats["errors"] += 1
+                    cand.attempts += 1
+                    if cand.attempts >= self.cfg.max_attempts:
+                        self._remove(key)
+                        self._lost("upload_failed")
+                    else:
+                        cand.next_try = t + self.cfg.retry_base_seconds
+                    continue
+                if result != "retry":
                     self._remove(key)
             for vno in list(self._verify):
                 v = self._verify[vno]
-                if v.next_try <= t and await self._check(v, t):
-                    done.append(vno)
+                if v.next_try > t:
+                    continue
+                try:
+                    if await self._check(v, t):
+                        done.append(vno)
+                except Exception:  # noqa: BLE001 - bookkeeping failure: re-check later, never re-upload
+                    self.stats["errors"] += 1
+                    v.next_try = t + self.cfg.verify_first_seconds
         return done
 
     async def _upload(self, cand: _Candidate, t: float) -> str:
@@ -253,8 +271,9 @@ class Enroller:
             cand.visitor_no = await self.reserve_visitor()
         name = camera_name(self.cfg.salt, cand.visitor_no)
         try:
-            pids = await self.find_by_name(name) if cand.attempts else []
+            pids = await self.find_by_name(name) if cand.tried else []
             if not pids:
+                cand.tried = True
                 pids = [await self.add_face(name, cand.jpeg)]
         except CameraTransient:
             cand.attempts += 1
@@ -267,9 +286,9 @@ class Enroller:
         except CameraRejected:
             self.stats["camera_rejected"] += 1
             return "drop"
-        for pid in pids:
-            await self.link(pid, cand.visitor_no)
-        await self.link(name, cand.visitor_no)  # in case events report customHumanID instead of PID
+        # Identity is the unique name (match events carry it); camera PIDs are reused after deletion,
+        # so they are kept only as verification bookkeeping, never linked as identity.
+        await self.link(name, cand.visitor_no)
         self.stats["uploaded"] += 1
         await self.persist.verifying(cand.visitor_no, name, pids)
         self._verify[cand.visitor_no] = _Verify(cand.visitor_no, name, pids, next_try=t + self.cfg.verify_first_seconds)

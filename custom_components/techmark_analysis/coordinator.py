@@ -57,6 +57,7 @@ from .core.enroller import (
     FaceUnusable,
 )
 from .core.facecrop import prepare_face
+from .core.faces import our_enrollments
 from .core.models import (
     FaceCapture,
     FaceMatch,
@@ -149,6 +150,7 @@ class TechmarkRuntime:
         if last is not None and now - last > timedelta(seconds=5):
             await self._job(self.store.start_gap, last, "home_assistant_offline")
         self.enroller.cfg.salt = await self._job(self.store.enroll_salt)
+        await self._reconcile_enrollments()
         # Modeling checks need no image: resume any that were in progress before the restart.
         self.enroller.resume_verification(await self._job(self.store.load_verifying), monotonic())
         left = await self._job(self.store.take_pending)
@@ -382,6 +384,24 @@ class TechmarkRuntime:
             raise EnrollRejected(str(err)) from err
         except CameraError as err:  # unreachable / timeout / auth: retry after lookup
             raise CameraTransient(str(err)) from err
+
+    async def _reconcile_enrollments(self) -> None:
+        """Startup: restore name links for our enrolled camera records and flag failed modeling.
+        Reads the camera only; never deletes or changes camera records."""
+        try:
+            records = await self.client.all_faces(self._customer_fdid)
+        except CameraError as err:
+            _LOGGER.debug("Enrollment reconcile skipped: %s", err)
+            return
+        reviewed = {r["visitor_no"] for r in await self._job(self.store.reviews)}
+        for rec in our_enrollments(records, self.enroller.cfg.salt):
+            try:
+                await self._job(self.store.link_camera_id, rec["name"], rec["visitor_no"])
+            except StoreError as err:
+                _LOGGER.warning("Cannot restore link for %s: %s", rec["name"], err)
+                continue
+            if rec["status"] == "failed" and rec["visitor_no"] not in reviewed:
+                await self._enroll_review(rec["visitor_no"], rec["name"], [rec["pid"]], "failed")
 
     async def _enroll_find(self, name: str) -> list[str]:
         try:

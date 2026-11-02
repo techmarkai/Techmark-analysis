@@ -17,6 +17,7 @@ from .models import (
     Session,
     SessionUpdate,
     UnmatchedCounted,
+    enrolled_identity,
 )
 
 EMPLOYEE = "employee"
@@ -59,13 +60,14 @@ class Processor:
         role = self.cfg.roles.get(ev.fdid)
         if role not in (EMPLOYEE, CUSTOMER):
             return [OtherMatch(ev.fdid, now)]
-        key = (role, ev.human_id)
+        hid = ev.name if role == CUSTOMER and enrolled_identity(ev.name) else ev.human_id
+        key = (role, hid)
         prev = self.sessions.get(key)
         if prev is not None and now - prev.last <= self.cfg.window(role) and now >= prev.last:
-            sess = Session(prev.id, role, ev.human_id, ev.name or prev.name, prev.start, now)
+            sess = Session(prev.id, role, hid, ev.name or prev.name, prev.start, now)
             new = False
         else:
-            sess = Session(f"{role}:{ev.human_id}:{int(now.timestamp())}", role, ev.human_id, ev.name, now, now)
+            sess = Session(f"{role}:{hid}:{int(now.timestamp())}", role, hid, ev.name, now, now)
             new = True
         self.sessions[key] = sess
         out: list[Outcome] = [SessionUpdate(sess, new, ev.similarity, ev.score, ev.fdid)]

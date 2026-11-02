@@ -58,3 +58,17 @@ def normalize_modeling(status: str) -> str:
     if s in ("modeling", "processing", "wait", "waiting", "none", "notmodeled", "unmodeled"):
         return "pending"
     return "unknown"
+
+
+def our_enrollments(records: list[dict], salt: str) -> list[dict]:
+    """Camera records HA enrolled with this database's salt: [{visitor_no, name, pid, status}]."""
+    from .models import enrolled_identity  # noqa: PLC0415 - avoid widening module imports
+
+    out = []
+    for r in records:
+        ident = enrolled_identity(r["name"])
+        if ident is None or ident[0] != salt or r["custom_human_id"] not in ("", r["name"]):
+            continue
+        out.append({"visitor_no": ident[1], "name": r["name"], "pid": r["person_id"],
+                    "status": normalize_modeling(r["modeling_status"])})
+    return out

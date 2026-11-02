@@ -13,7 +13,9 @@ from homeassistant.components.http import KEY_HASS, HomeAssistantView
 from .const import REPORT_DIR
 
 EXPORT_URL = "/api/techmark_analysis/export/{filename}"
-FILENAME_RE = re.compile(r"^attendance_\d{4}-\d{2}-\d{2}_\d{4}-\d{2}-\d{2}\.csv$")
+FILENAME_RE = re.compile(
+    r"^(attendance_\d{4}-\d{2}-\d{2}_\d{4}-\d{2}-\d{2}|visitors_(annual|monthly)_\d{4}|visitor_\d{1,9})\.csv$"
+)
 
 
 class AttendanceExportView(HomeAssistantView):

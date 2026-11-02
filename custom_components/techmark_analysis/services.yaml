@@ -40,3 +40,26 @@ export_attendance:
       required: false
       selector:
         date:
+export_visitors:
+  fields:
+    report:
+      required: true
+      selector:
+        select:
+          options:
+            - visitor
+            - annual
+            - monthly
+    year:
+      required: false
+      selector:
+        number:
+          min: 2000
+          max: 2100
+          mode: box
+    visitor_id:
+      required: false
+      selector:
+        number:
+          min: 1
+          mode: box

@@ -11,7 +11,7 @@ import csv
 import io
 from datetime import date, datetime, timedelta, timezone
 
-from .report import _cell
+from .report import csv_safe
 from .store import Store
 
 RANGES = ("today", "yesterday", "this_week", "this_month", "custom")
@@ -77,8 +77,8 @@ def render_attendance_csv(rows: list[dict]) -> str:
     for r in rows:
         w.writerow(
             [
-                _cell(r["name"]),
-                _cell(r["human_id"]),
+                csv_safe(r["name"]),
+                csv_safe(r["human_id"]),
                 r["day"],
                 r["first"].strftime("%H:%M:%S"),
                 r["last"].strftime("%H:%M:%S"),

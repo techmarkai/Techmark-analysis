@@ -18,7 +18,7 @@ LABELS = [
 ]
 
 
-def _cell(value) -> str:
+def csv_safe(value) -> str:
     """CSV cell safe against spreadsheet formula injection (names come from the camera)."""
     s = "" if value is None else str(value)
     return "'" + s if s[:1] in ("=", "+", "-", "@", "\t", "\r") else s
@@ -67,5 +67,5 @@ def render_csv(stats: dict) -> str:
     w.writerow([])
     w.writerow(["day", "human_id", "name", "first_seen", "last_seen"])
     for a in stats["attendance"]:
-        w.writerow([_cell(a[k]) for k in ("day", "human_id", "name", "first_seen", "last_seen")])
+        w.writerow([csv_safe(a[k]) for k in ("day", "human_id", "name", "first_seen", "last_seen")])
     return buf.getvalue()

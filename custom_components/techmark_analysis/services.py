@@ -36,7 +36,24 @@ EXPORT_SCHEMA = vol.Schema(
         vol.Optional("end_date"): cv.date,
     }
 )
+VISITORS_SCHEMA = vol.Schema(
+    {
+        vol.Required("report"): vol.In(["visitor", "annual", "monthly"]),
+        vol.Optional("year"): vol.All(vol.Coerce(int), vol.Range(min=2000, max=2100)),
+        vol.Optional("visitor_id"): vol.All(vol.Coerce(int), vol.Range(min=1)),
+    }
+)
 DOWNLOAD_LINK_TTL = timedelta(minutes=5)
+
+
+def _download_url(hass: HomeAssistant, filename: str) -> str:
+    path = EXPORT_URL.format(filename=filename)
+    try:
+        # Short-lived, single-use link bound to the caller's login; the view re-checks admin.
+        return async_sign_path(hass, path, DOWNLOAD_LINK_TTL)
+    except Exception:  # noqa: BLE001 - no user session (e.g. automation): authenticated path only
+        _LOGGER.debug("No session to sign the download link; returning the authenticated path")
+        return path
 
 
 def _runtime(hass: HomeAssistant):
@@ -61,13 +78,18 @@ def async_setup_services(hass: HomeAssistant) -> None:
             )
         except ValueError as err:
             raise ServiceValidationError(str(err)) from err
-        path = EXPORT_URL.format(filename=result["filename"])
+        result["download_url"] = _download_url(hass, result["filename"])
+        return result if call.return_response else None
+
+    async def export_visitors(call: ServiceCall) -> ServiceResponse:
+        rt = _runtime(hass)
         try:
-            # Short-lived link bound to the caller's own login; the view re-checks admin.
-            result["download_url"] = async_sign_path(hass, path, DOWNLOAD_LINK_TTL)
-        except Exception:  # noqa: BLE001 - no user session (e.g. automation): authenticated path only
-            _LOGGER.debug("No session to sign the download link; returning the authenticated path")
-            result["download_url"] = path
+            result = await rt.async_export_visitors(
+                call.data["report"], call.data.get("year"), call.data.get("visitor_id")
+            )
+        except ValueError as err:
+            raise ServiceValidationError(str(err)) from err
+        result["download_url"] = _download_url(hass, result["filename"])
         return result if call.return_response else None
 
     async def list_faces(call: ServiceCall) -> ServiceResponse:
@@ -91,6 +113,14 @@ def async_setup_services(hass: HomeAssistant) -> None:
         "export_attendance",
         export_attendance,
         schema=EXPORT_SCHEMA,
+        supports_response=SupportsResponse.OPTIONAL,
+    )
+    async_register_admin_service(
+        hass,
+        DOMAIN,
+        "export_visitors",
+        export_visitors,
+        schema=VISITORS_SCHEMA,
         supports_response=SupportsResponse.OPTIONAL,
     )
     async_register_admin_service(

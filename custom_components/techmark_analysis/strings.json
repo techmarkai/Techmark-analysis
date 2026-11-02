@@ -94,6 +94,24 @@
           "description": "Last day (custom range), at most 366 days"
         }
       }
+    },
+    "export_visitors": {
+      "name": "Export customer visitor report",
+      "description": "Admin only. Permanent customer visit history as CSV: one visitor's visits, a per-visitor annual report, or monthly statistics. Unique visitors, visit days (one per visitor per day) and raw recognition events are reported separately.",
+      "fields": {
+        "report": {
+          "name": "Report",
+          "description": "visitor, annual, or monthly"
+        },
+        "year": {
+          "name": "Year",
+          "description": "Annual/monthly reports; defaults to the current year"
+        },
+        "visitor_id": {
+          "name": "Visitor ID",
+          "description": "Required for the visitor report"
+        }
+      }
     }
   }
 }

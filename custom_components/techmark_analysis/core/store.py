@@ -21,7 +21,7 @@ from .models import (
     UnmatchedCounted,
 )
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE IF NOT EXISTS events(
@@ -37,6 +37,15 @@ CREATE TABLE IF NOT EXISTS attendance(
   day TEXT NOT NULL, human_id TEXT NOT NULL, name TEXT, first REAL NOT NULL, last REAL NOT NULL,
   PRIMARY KEY(day, human_id));
 CREATE TABLE IF NOT EXISTS gaps(id INTEGER PRIMARY KEY, start REAL NOT NULL, end REAL, reason TEXT);
+-- Permanent visitor history (v2). Never purged. AUTOINCREMENT: visitor numbers are never reused.
+CREATE TABLE IF NOT EXISTS visitors(visitor_no INTEGER PRIMARY KEY AUTOINCREMENT, created REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS visitor_camera_ids(
+  camera_pid TEXT PRIMARY KEY, visitor_no INTEGER NOT NULL REFERENCES visitors(visitor_no));
+CREATE TABLE IF NOT EXISTS visit_days(
+  visitor_no INTEGER NOT NULL REFERENCES visitors(visitor_no), day TEXT NOT NULL,
+  first REAL NOT NULL, last REAL NOT NULL, events INTEGER NOT NULL,
+  PRIMARY KEY(visitor_no, day));
+CREATE INDEX IF NOT EXISTS ix_visit_days_day ON visit_days(day);
 """
 
 
@@ -61,7 +70,9 @@ class Store:
             self._db.execute("PRAGMA journal_mode=WAL")
             self._db.executescript(_SCHEMA)
             self._db.execute(
-                "INSERT OR IGNORE INTO meta(key, value) VALUES('schema_version', ?)", (str(SCHEMA_VERSION),)
+                "INSERT INTO meta(key, value) VALUES('schema_version', ?)"
+                " ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                (str(SCHEMA_VERSION),),
             )
         except sqlite3.Error as err:
             raise StoreError(str(err)) from err
@@ -79,11 +90,13 @@ class Store:
                 self._db.execute("BEGIN")
                 fn(self._db)
                 self._db.execute("COMMIT")
-            except sqlite3.Error as err:
+            except (sqlite3.Error, StoreError) as err:
                 try:
                     self._db.execute("ROLLBACK")
                 except sqlite3.Error:
                     pass
+                if isinstance(err, StoreError):
+                    raise
                 raise StoreError(str(err)) from err
 
     def query(self, sql: str, args: tuple = ()) -> list[tuple]:
@@ -107,6 +120,8 @@ class Store:
                         " ON CONFLICT(id) DO UPDATE SET last=excluded.last, name=excluded.name",
                         (s.id, s.role, s.human_id, s.name, _ts(s.start), _ts(s.last), self.day(s.start)),
                     )
+                    if s.role == "customer":
+                        self._visit(db, s.human_id, s.last)
                 elif isinstance(o, AttendanceSeen):
                     db.execute(
                         "INSERT INTO attendance(day, human_id, name, first, last) VALUES(?,?,?,?,?)"
@@ -130,6 +145,46 @@ class Store:
                         "INSERT INTO events(ts, day, kind) VALUES(?,?,?)",
                         (_ts(o.ts), self.day(o.ts), f"line_{o.direction}"),
                     )
+
+        self._write(run)
+
+    # ---- permanent visitors -----------------------------------------------
+
+    @staticmethod
+    def _new_visitor(db: sqlite3.Connection, ts: datetime) -> int:
+        return db.execute("INSERT INTO visitors(created) VALUES(?)", (_ts(ts),)).lastrowid
+
+    def _visit(self, db: sqlite3.Connection, camera_pid: str, ts: datetime) -> None:
+        """One visit-day per visitor per local day; repeats only widen first/last and count events."""
+        row = db.execute("SELECT visitor_no FROM visitor_camera_ids WHERE camera_pid=?", (camera_pid,)).fetchone()
+        if row is None:
+            vno = self._new_visitor(db, ts)
+            db.execute("INSERT INTO visitor_camera_ids(camera_pid, visitor_no) VALUES(?,?)", (camera_pid, vno))
+        else:
+            vno = row[0]
+        db.execute(
+            "INSERT INTO visit_days(visitor_no, day, first, last, events) VALUES(?,?,?,?,1)"
+            " ON CONFLICT(visitor_no, day) DO UPDATE SET"
+            " first=MIN(first, excluded.first), last=MAX(last, excluded.last), events=events+1",
+            (vno, self.day(ts), _ts(ts), _ts(ts)),
+        )
+
+    def create_visitor(self, now: datetime) -> int:
+        """Reserve the next permanent visitor number (used by enrollment)."""
+        out: list[int] = []
+        self._write(lambda db: out.append(self._new_visitor(db, now)))
+        return out[0]
+
+    def link_camera_id(self, camera_pid: str, visitor_no: int) -> None:
+        """Map a camera person ID to a visitor. Never silently remaps an existing link."""
+
+        def run(db):
+            if db.execute("SELECT 1 FROM visitors WHERE visitor_no=?", (visitor_no,)).fetchone() is None:
+                raise StoreError(f"unknown visitor {visitor_no}")
+            row = db.execute("SELECT visitor_no FROM visitor_camera_ids WHERE camera_pid=?", (camera_pid,)).fetchone()
+            if row is not None and row[0] != visitor_no:
+                raise StoreError(f"camera id already linked to visitor {row[0]}")
+            db.execute("INSERT OR IGNORE INTO visitor_camera_ids(camera_pid, visitor_no) VALUES(?,?)", (camera_pid, visitor_no))
 
         self._write(run)
 

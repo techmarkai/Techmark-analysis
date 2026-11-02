@@ -57,6 +57,15 @@ from .core.report import render_csv, render_markdown
 from .core.stats import daily, monthly
 from .core.store import Store, StoreError
 from .core.stream_parser import MultipartParser, Part
+from .core.visitors import (
+    annual_rows,
+    monthly_rows,
+    period_summary,
+    render_annual_csv,
+    render_monthly_csv,
+    render_visitor_csv,
+    visitor_report,
+)
 from .isapi import AuthError, CameraError, HikClient
 
 _LOGGER = logging.getLogger(__name__)
@@ -299,24 +308,47 @@ class TechmarkRuntime:
         """Write the attendance CSV for a range (HA time zone). Raises ValueError on a bad range."""
         first, last = resolve_range(kind, dt_util.now().date(), start, end)
         rows = await self._job(attendance_rows, self.store, first, last)
-        text = render_attendance_csv(rows)
         name = f"attendance_{first.isoformat()}_{last.isoformat()}.csv"
-        folder = Path(self.hass.config.path(REPORT_DIR))
-
-        def write() -> str:
-            folder.mkdir(exist_ok=True)
-            path = folder / name
-            path.write_text(text, encoding="utf-8-sig", newline="")  # BOM: Excel opens Unicode names correctly
-            return str(path)
-
         return {
             "range": kind,
             "start_date": first.isoformat(),
             "end_date": last.isoformat(),
             "rows": len(rows),
-            "file": await self._job(write),
+            "file": await self._write_csv(name, render_attendance_csv(rows)),
             "filename": name,
         }
+
+    async def _write_csv(self, name: str, text: str) -> str:
+        folder = Path(self.hass.config.path(REPORT_DIR))
+
+        def write() -> str:
+            folder.mkdir(exist_ok=True)
+            path = folder / name
+            path.write_text(text, encoding="utf-8-sig", newline="")  # BOM: Excel opens Unicode correctly
+            return str(path)
+
+        return await self._job(write)
+
+    async def async_export_visitors(self, report: str, year: int | None, visitor_id: int | None) -> dict:
+        """Customer-visitor CSV: one visitor, per-visitor annual, or monthly summary. ValueError if invalid."""
+        if report == "visitor":
+            if visitor_id is None:
+                raise ValueError("visitor report requires visitor_id")
+            data = await self._job(visitor_report, self.store, visitor_id)
+            if data is None:
+                raise ValueError(f"unknown visitor {visitor_id}")
+            name, text = f"visitor_{visitor_id}.csv", render_visitor_csv(data)
+            summary = {k: v for k, v in data.items() if k != "visits"}
+        else:
+            year = year or dt_util.now().year
+            if report == "annual":
+                rows = await self._job(annual_rows, self.store, year)
+                name, text = f"visitors_annual_{year}.csv", render_annual_csv(rows)
+            else:
+                rows = await self._job(monthly_rows, self.store, year)
+                name, text = f"visitors_monthly_{year}.csv", render_monthly_csv(rows)
+            summary = await self._job(period_summary, self.store, date(year, 1, 1), date(year, 12, 31))
+        return {"report": report, "summary": summary, "file": await self._write_csv(name, text), "filename": name}
 
     async def async_generate_report(self, period: str, day: date) -> dict:
         now = dt_util.utcnow()

@@ -71,8 +71,8 @@ The integration treats **HA receive time as authoritative** and stores camera ti
 | Door entries / exits | Line-crossing events per direction (after T-2) | Exact footfall — merged crossings and alarm cooldowns undercount |
 | Employees present | Distinct `human_id` from the employee library today | — |
 | Attendance | Per employee per day: first seen, last seen, number of visits | Time clock of record |
-| Known customers (unique) | Distinct `human_id` from the customer library today/month | All customers |
-| Returning customers | Known customers with a visit on an earlier day | — |
+| Unique customers | Distinct `human_id` from the customer library today/month | All customers |
+| Returning customers | Unique customers with a visit on an earlier day | — |
 | Customer visits | Deduplicated sessions of known customers | — |
 | Unmatched face events | Quality-passing `contrastFailed` events, counted raw | **Not** unique people, **not** new customers |
 | Low-quality faces | Unmatched events with `score` below threshold | Excluded from all customer statistics |
@@ -143,6 +143,8 @@ Day boundaries and all report periods use HA's configured time zone (`hass.confi
 Session state (role, human_id, session start, last match, open/closed) is written to the SQLite `sessions` table on every match and restored on startup, so a restart neither opens spurious sessions nor loses open ones.
 
 ### 4.4 Entities
+
+> Superseded in 0.3.0: primary sensors are only Unique customers today/this month, Employees present today, Returning customers this month (visit-day based). Other figures are in diagnostics.
 
 - `binary_sensor.techmark_stream_connected`
 - `sensor.techmark_employees_present_today` (attrs: names, first/last seen)

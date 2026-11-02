@@ -9,7 +9,7 @@ LABELS = [
     ("door_entries", "Door entries (line crossing)"),
     ("door_exits", "Door exits (line crossing)"),
     ("employees_present", "Employees present"),
-    ("known_customers_unique", "Known customers (unique)"),
+    ("unique_customers", "Unique customers"),
     ("returning_customers", "Returning customers"),
     ("customer_visits", "Customer visits"),
     ("unmatched_face_events", "Unmatched face events (not unique people)"),

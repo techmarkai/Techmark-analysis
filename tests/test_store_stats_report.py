@@ -108,13 +108,13 @@ def test_stats_separation_and_returning(store):
     )
     st = daily(store, date(2026, 11, 1), local(2026, 11, 1, 20))
     assert st["employees_present"] == 1
-    assert st["known_customers_unique"] == 2
+    assert st["unique_customers"] == 2
     assert st["returning_customers"] == 1
     assert st["customer_visits"] == 2
     assert st["unmatched_face_events"] == 1 and st["low_quality_faces"] == 1
     assert st["door_entries"] is None
     mo = monthly(store, 2026, 11, local(2026, 11, 30, 20))
-    assert mo["known_customers_unique"] == 2 and mo["returning_customers"] == 1
+    assert mo["unique_customers"] == 2 and mo["returning_customers"] == 1
 
 
 def test_utc_plus3_day_boundary_and_midnight_session(store):
@@ -139,7 +139,7 @@ def test_report_wording(store):
     store.start_gap(local(2026, 11, 1, 10), "x")
     st = daily(store, date(2026, 11, 1), local(2026, 11, 1, 20))
     md = render_markdown(st, "Daily report")
-    assert "Unmatched face events (not unique people)" in md and "Known customers (unique)" in md
+    assert "Unmatched face events (not unique people)" in md and "Unique customers" in md
     assert "footfall" not in md.lower()
     assert "| Door entries (line crossing) | not configured |" in md
     assert "Data gaps" in md

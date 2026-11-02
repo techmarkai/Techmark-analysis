@@ -124,7 +124,7 @@ def test_customers_and_unmatched_never_in_attendance(tmp_path):
     rows = attendance_rows(s, date(2026, 10, 31), date(2026, 10, 31))
     assert [r["human_id"] for r in rows] == ["1"]
     st = daily(s, date(2026, 10, 31), at(TZ, 2026, 10, 31, 20))
-    assert st["known_customers_unique"] == 1 and st["customer_visits"] == 1  # employee not counted
+    assert st["unique_customers"] == 1 and st["customer_visits"] == 1  # employee not counted
 
 
 def test_persistence_across_restart(tmp_path):

@@ -14,9 +14,12 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.const import EntityCategory, UnitOfTime
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.util import dt as dt_util
 
+from .const import DOMAIN
+from .core.entities import PRIMARY_SENSOR_KEYS, obsolete_unique_ids
 from .entity import TechmarkEntity
 
 
@@ -25,28 +28,18 @@ class TechmarkSensorDescription(SensorEntityDescription):
     period: str | None  # "day" | "month" | None
     stat: str | None = None
     value_fn: Callable | None = None
-    door: bool = False
 
 
-def _count(key: str, name: str, period: str, stat: str, door: bool = False) -> TechmarkSensorDescription:
-    return TechmarkSensorDescription(
-        key=key, name=name, period=period, stat=stat, door=door, state_class=SensorStateClass.TOTAL
-    )
+def _count(key: str, name: str, period: str, stat: str) -> TechmarkSensorDescription:
+    return TechmarkSensorDescription(key=key, name=name, period=period, stat=stat, state_class=SensorStateClass.TOTAL)
 
 
+# The only primary statistics sensors (keys keep existing entity IDs; see core/entities.py).
 SENSORS: tuple[TechmarkSensorDescription, ...] = (
+    _count("known_customers_today", "Unique customers today", "day", "unique_customers"),
+    _count("known_customers_month", "Unique customers this month", "month", "unique_customers"),
     _count("employees_present_today", "Employees present today", "day", "employees_present"),
-    _count("known_customers_today", "Known customers today", "day", "known_customers_unique"),
-    _count("returning_customers_today", "Returning customers today", "day", "returning_customers"),
-    _count("customer_visits_today", "Customer visits today", "day", "customer_visits"),
-    _count("unmatched_face_events_today", "Unmatched face events today", "day", "unmatched_face_events"),
-    _count("low_quality_faces_today", "Low-quality faces today", "day", "low_quality_faces"),
-    _count("door_entries_today", "Door entries today", "day", "door_entries", door=True),
-    _count("door_exits_today", "Door exits today", "day", "door_exits", door=True),
-    _count("known_customers_month", "Known customers this month", "month", "known_customers_unique"),
     _count("returning_customers_month", "Returning customers this month", "month", "returning_customers"),
-    _count("customer_visits_month", "Customer visits this month", "month", "customer_visits"),
-    _count("unmatched_face_events_month", "Unmatched face events this month", "month", "unmatched_face_events"),
     TechmarkSensorDescription(
         key="camera_clock_skew",
         name="Camera clock skew",
@@ -58,9 +51,15 @@ SENSORS: tuple[TechmarkSensorDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
 )
+assert tuple(d.key for d in SENSORS if d.entity_category is None) == PRIMARY_SENSOR_KEYS
 
 
 async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities: AddConfigEntryEntitiesCallback) -> None:
+    registry = er.async_get(hass)
+    entries = er.async_entries_for_config_entry(registry, entry.entry_id)
+    for uid in obsolete_unique_ids([e.unique_id for e in entries if e.domain == "sensor"], str(entry.unique_id)):
+        if entity_id := registry.async_get_entity_id("sensor", DOMAIN, uid):
+            registry.async_remove(entity_id)  # removed sensor: no orphan entity left behind
     async_add_entities(TechmarkSensor(entry.runtime_data, d) for d in SENSORS)
 
 
@@ -73,8 +72,6 @@ class TechmarkSensor(TechmarkEntity, SensorEntity):
 
     @property
     def available(self) -> bool:
-        if self.entity_description.door:
-            return bool(self.rt.processor.cfg.line_directions)
         return self.rt.store is not None
 
     @property

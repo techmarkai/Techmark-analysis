@@ -466,3 +466,25 @@ def test_reconcile_selects_only_our_records():
         {"visitor_no": 3, "name": name(3), "pid": "1", "status": "success"},
         {"visitor_no": 4, "name": name(4), "pid": "2", "status": "failed"},
     ]
+
+
+def test_security_review_fixes(tmp_path):
+    from core.faces import our_enrollments
+    from core.models import enrolled_identity
+
+    assert enrolled_identity("TMV-ab12cd34-\u0660\u0660\u0660\u0660\u0660\u0663") is None  # non-ASCII digits rejected
+    assert enrolled_identity(name(3)) == (SALT, 3)
+    recs = [{"name": name(3), "person_id": None, "custom_human_id": name(3), "modeling_status": "failed"}]
+    assert our_enrollments(recs, SALT) == []  # no valid PID: skipped, cannot break startup
+    assert summarize([("1", "failed"), ("2", "success")]) == "success"  # one good record: not retired
+    s = Store(str(tmp_path / "x.db"), ZoneInfo("Etc/GMT-3"))
+
+    def boom(db):
+        db.execute("INSERT INTO meta(key, value) VALUES('probe', '1')")
+        raise TypeError("non-sqlite failure")
+
+    with pytest.raises(TypeError):
+        s._write(boom)
+    assert s.query("SELECT COUNT(*) FROM meta WHERE key='probe'")[0][0] == 0  # rolled back
+    s.touch_alive(datetime(2026, 1, 1, tzinfo=timezone.utc))  # store still usable afterwards
+    s.close()

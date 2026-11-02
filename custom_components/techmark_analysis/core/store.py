@@ -102,14 +102,14 @@ class Store:
                 self._db.execute("BEGIN")
                 fn(self._db)
                 self._db.execute("COMMIT")
-            except (sqlite3.Error, StoreError) as err:
+            except Exception as err:
                 try:
                     self._db.execute("ROLLBACK")
                 except sqlite3.Error:
                     pass
-                if isinstance(err, StoreError):
-                    raise
-                raise StoreError(str(err)) from err
+                if isinstance(err, sqlite3.Error):
+                    raise StoreError(str(err)) from err
+                raise
 
     def query(self, sql: str, args: tuple = ()) -> list[tuple]:
         with self._lock:

@@ -55,6 +55,7 @@ from .core.enroller import (
     Enroller,
     EnrollPersistence,
     FaceUnusable,
+    summarize,
 )
 from .core.facecrop import prepare_face
 from .core.faces import our_enrollments
@@ -394,14 +395,17 @@ class TechmarkRuntime:
             _LOGGER.debug("Enrollment reconcile skipped: %s", err)
             return
         reviewed = {r["visitor_no"] for r in await self._job(self.store.reviews)}
+        groups: dict[int, list[dict]] = {}
         for rec in our_enrollments(records, self.enroller.cfg.salt):
+            groups.setdefault(rec["visitor_no"], []).append(rec)
+        for vno, recs in groups.items():
             try:
-                await self._job(self.store.link_camera_id, rec["name"], rec["visitor_no"])
-            except StoreError as err:
-                _LOGGER.warning("Cannot restore link for %s: %s", rec["name"], err)
-                continue
-            if rec["status"] == "failed" and rec["visitor_no"] not in reviewed:
-                await self._enroll_review(rec["visitor_no"], rec["name"], [rec["pid"]], "failed")
+                await self._job(self.store.link_camera_id, recs[0]["name"], vno)
+                # Retire only when every record of this visitor failed (one good record suffices).
+                if summarize([(r["pid"], r["status"]) for r in recs]) == "failed" and vno not in reviewed:
+                    await self._enroll_review(vno, recs[0]["name"], [r["pid"] for r in recs], "failed")
+            except Exception as err:  # noqa: BLE001 - reconcile must never abort integration startup
+                _LOGGER.warning("Enrollment reconcile skipped visitor %s: %s", vno, err)
 
     async def _enroll_find(self, name: str) -> list[str]:
         try:

@@ -8,7 +8,7 @@ from datetime import datetime
 
 # Name/customHumanID HA gives camera records it enrolls. Camera PIDs are NOT permanent (the camera
 # reuses them after a record is deleted), so this name is the identity of enrolled customers.
-ENROLLED_NAME = re.compile(r"^TMV-([0-9a-f]{8})-(\d{6})$")
+ENROLLED_NAME = re.compile(r"^TMV-([0-9a-f]{8})-([0-9]{6})$", re.ASCII)
 
 
 def enrolled_identity(name: str | None) -> tuple[str, int] | None:

@@ -18,12 +18,12 @@ def _period(store: Store, day_from: str, day_to: str, now: datetime) -> dict:
     """Inclusive day range (ISO strings)."""
     one = lambda sql, *a: store.query(sql, a)[0][0] or 0  # noqa: E731
     span = (day_from, day_to)
-    customers = one(
-        "SELECT COUNT(DISTINCT human_id) FROM sessions WHERE role='customer' AND day BETWEEN ? AND ?", *span
-    )
+    # Unique customers = distinct permanent visitors with a visit day in the period (not sessions,
+    # not recognition events). Returning = those who also have a visit day before the period.
+    customers = one("SELECT COUNT(DISTINCT visitor_no) FROM visit_days WHERE day BETWEEN ? AND ?", *span)
     returning = one(
-        "SELECT COUNT(DISTINCT s.human_id) FROM sessions s WHERE s.role='customer' AND s.day BETWEEN ? AND ?"
-        " AND EXISTS (SELECT 1 FROM sessions p WHERE p.role='customer' AND p.human_id=s.human_id AND p.day < ?)",
+        "SELECT COUNT(DISTINCT v.visitor_no) FROM visit_days v WHERE v.day BETWEEN ? AND ?"
+        " AND EXISTS (SELECT 1 FROM visit_days p WHERE p.visitor_no = v.visitor_no AND p.day < ?)",
         *span,
         day_from,
     )
@@ -56,7 +56,7 @@ def _period(store: Store, day_from: str, day_to: str, now: datetime) -> dict:
         "period_end": day_to,
         "employees_present": len({a["human_id"] for a in attendance}),
         "attendance": attendance,
-        "known_customers_unique": customers,
+        "unique_customers": customers,
         "returning_customers": returning,
         "customer_visits": visits,
         "unmatched_face_events": kinds.get("unmatched", 0),

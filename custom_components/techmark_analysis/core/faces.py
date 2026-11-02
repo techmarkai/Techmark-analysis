@@ -67,7 +67,7 @@ def our_enrollments(records: list[dict], salt: str) -> list[dict]:
     out = []
     for r in records:
         ident = enrolled_identity(r["name"])
-        if ident is None or ident[0] != salt or r["custom_human_id"] not in ("", r["name"]):
+        if ident is None or ident[0] != salt or not r["person_id"] or r["custom_human_id"] not in ("", r["name"]):
             continue
         out.append({"visitor_no": ident[1], "name": r["name"], "pid": r["person_id"],
                     "status": normalize_modeling(r["modeling_status"])})

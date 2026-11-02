@@ -11,6 +11,9 @@ CONF_EMPLOYEE_FDID = "employee_fdid"
 CONF_CUSTOMER_FDID = "customer_fdid"
 CONF_REPORT_TIME = "daily_report_time"
 CONF_RETENTION_DAYS = "retention_days"
+CONF_ENROLL = "enrollment_enabled"
+CONF_ENROLL_MIN_SCORE = "min_enroll_score"
+CONF_ENROLL_MIN_FACE_PX = "min_enroll_face_px"
 
 DEFAULT_OPTIONS = {
     CONF_MIN_FACE_QUALITY: 50,
@@ -20,6 +23,9 @@ DEFAULT_OPTIONS = {
     CONF_CUSTOMER_FDID: "2",
     CONF_REPORT_TIME: "23:55:00",
     CONF_RETENTION_DAYS: 400,
+    CONF_ENROLL: False,
+    CONF_ENROLL_MIN_SCORE: 70,
+    CONF_ENROLL_MIN_FACE_PX: 120,
 }
 
 # Camera apps that must stay running; the integration only reports drift, never changes it.
@@ -35,3 +41,4 @@ SIGNAL_UPDATE = f"{DOMAIN}_update_{{}}"
 EVENT_EMPLOYEE_SEEN = f"{DOMAIN}_employee_seen"
 EVENT_CUSTOMER_SEEN = f"{DOMAIN}_customer_seen"
 EVENT_UNMATCHED_FACE = f"{DOMAIN}_unmatched_face"
+EVENT_CUSTOMER_ENROLLED = f"{DOMAIN}_customer_enrolled"

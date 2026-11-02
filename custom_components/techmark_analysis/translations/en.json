@@ -37,7 +37,10 @@
           "employee_fdid": "Employee face library ID",
           "customer_fdid": "Customer face library ID",
           "daily_report_time": "Daily report time",
-          "retention_days": "Data retention (days)"
+          "retention_days": "Data retention (days)",
+          "enrollment_enabled": "Automatic customer enrollment (adds new faces to the camera's Customers library)",
+          "min_enroll_score": "Minimum face quality to enroll (50-100)",
+          "min_enroll_face_px": "Minimum face width to enroll (pixels)"
         }
       }
     }
@@ -50,6 +53,10 @@
     "app_state_drift": {
       "title": "Camera analytics apps not running",
       "description": "These required camera apps are not running: {apps}. Face events may be missing. Techmark Analysis never starts or stops camera apps; check the camera."
+    },
+    "enrollment_candidates_lost": {
+      "title": "Customer enrollment candidates were lost",
+      "description": "{total} unknown-face candidate(s) could not be enrolled so far ({reasons}). restart: pending when Home Assistant restarted (face crops are kept in memory only); overflow: queue memory budget exceeded; no_image: the camera image never arrived; upload_failed: camera unreachable after all retries. These people can still be enrolled on a later visit."
     }
   },
   "services": {
@@ -110,6 +117,16 @@
         "visitor_id": {
           "name": "Visitor ID",
           "description": "Required for the visitor report"
+        }
+      }
+    },
+    "erase_visitor": {
+      "name": "Erase visitor",
+      "description": "Admin only. Deletes one visitor's visit history, match records and exported visitor CSVs. The visitor number stays retired. Delete the face from the camera library separately.",
+      "fields": {
+        "visitor_id": {
+          "name": "Visitor ID",
+          "description": "Visitor number to erase"
         }
       }
     }

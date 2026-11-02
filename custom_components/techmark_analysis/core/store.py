@@ -5,6 +5,7 @@ Stores no images, face model data or certificate numbers.
 
 from __future__ import annotations
 
+import secrets
 import sqlite3
 import threading
 from datetime import datetime, timedelta, timezone
@@ -46,6 +47,12 @@ CREATE TABLE IF NOT EXISTS visit_days(
   first REAL NOT NULL, last REAL NOT NULL, events INTEGER NOT NULL,
   PRIMARY KEY(visitor_no, day));
 CREATE INDEX IF NOT EXISTS ix_visit_days_day ON visit_days(day);
+CREATE TABLE IF NOT EXISTS erased_visitors(visitor_no INTEGER PRIMARY KEY, erased REAL NOT NULL);
+-- Enrollment queue accounting: non-biometric metadata only (detection id, score, number).
+CREATE TABLE IF NOT EXISTS enroll_pending(key TEXT PRIMARY KEY, saved REAL NOT NULL, score INTEGER,
+  visitor_no INTEGER, has_crop INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS enroll_losses(id INTEGER PRIMARY KEY, at REAL NOT NULL, reason TEXT NOT NULL,
+  count INTEGER NOT NULL);
 """
 
 
@@ -162,12 +169,80 @@ class Store:
             db.execute("INSERT INTO visitor_camera_ids(camera_pid, visitor_no) VALUES(?,?)", (camera_pid, vno))
         else:
             vno = row[0]
+        if db.execute("SELECT 1 FROM erased_visitors WHERE visitor_no=?", (vno,)).fetchone():
+            return  # erased on request: camera matches no longer recorded
         db.execute(
             "INSERT INTO visit_days(visitor_no, day, first, last, events) VALUES(?,?,?,?,1)"
             " ON CONFLICT(visitor_no, day) DO UPDATE SET"
             " first=MIN(first, excluded.first), last=MAX(last, excluded.last), events=events+1",
             (vno, self.day(ts), _ts(ts), _ts(ts)),
         )
+
+    def erase_visitor(self, visitor_no: int, now: datetime) -> bool:
+        """Delete a visitor's visit history and match records. The number stays retired (never reused);
+        camera-ID links are kept only so future matches of that face are ignored. Returns False if unknown."""
+        found: list[bool] = []
+
+        def run(db):
+            if db.execute("SELECT 1 FROM visitors WHERE visitor_no=?", (visitor_no,)).fetchone() is None:
+                found.append(False)
+                return
+            pids = [r[0] for r in db.execute("SELECT camera_pid FROM visitor_camera_ids WHERE visitor_no=?", (visitor_no,))]
+            db.execute("DELETE FROM visit_days WHERE visitor_no=?", (visitor_no,))
+            for pid in pids:
+                db.execute("DELETE FROM sessions WHERE role='customer' AND human_id=?", (pid,))
+                db.execute("DELETE FROM events WHERE role='customer' AND human_id=?", (pid,))
+            db.execute("INSERT OR IGNORE INTO erased_visitors(visitor_no, erased) VALUES(?,?)", (visitor_no, _ts(now)))
+            found.append(True)
+
+        self._write(run)
+        return found[0]
+
+    # ---- enrollment accounting -----------------------------------------------
+
+    def enroll_salt(self) -> str:
+        """Random per-database token in camera names, so a reset database never reuses a name."""
+        out: list[str] = []
+
+        def run(db):
+            row = db.execute("SELECT value FROM meta WHERE key='enroll_salt'").fetchone()
+            if row is None:
+                db.execute("INSERT INTO meta(key, value) VALUES('enroll_salt', ?)", (secrets.token_hex(4),))
+                row = db.execute("SELECT value FROM meta WHERE key='enroll_salt'").fetchone()
+            out.append(row[0])
+
+        self._write(run)
+        return out[0]
+
+    def save_pending(self, rows: list[dict], now: datetime) -> None:
+        def run(db):
+            db.execute("DELETE FROM enroll_pending")
+            db.executemany(
+                "INSERT INTO enroll_pending(key, saved, score, visitor_no, has_crop) VALUES(?,?,?,?,?)",
+                [(r["key"], _ts(now), r["score"], r["visitor_no"], int(r["has_crop"])) for r in rows],
+            )
+
+        self._write(run)
+
+    def take_pending(self) -> list[tuple]:
+        """Pending candidates left by the previous run (lost: images were memory-only). Clears them."""
+        out: list[tuple] = []
+
+        def run(db):
+            out.extend(db.execute("SELECT key, saved, score, visitor_no FROM enroll_pending ORDER BY saved"))
+            db.execute("DELETE FROM enroll_pending")
+
+        self._write(run)
+        return out
+
+    def record_enroll_losses(self, losses: dict[str, int], now: datetime) -> None:
+        self._write(lambda db: db.executemany(
+            "INSERT INTO enroll_losses(at, reason, count) VALUES(?,?,?)",
+            [(_ts(now), reason, n) for reason, n in losses.items() if n],
+        ))
+
+    def enroll_loss_totals(self) -> dict[str, int]:
+        return dict(self.query("SELECT reason, SUM(count) FROM enroll_losses GROUP BY reason"))
 
     def create_visitor(self, now: datetime) -> int:
         """Reserve the next permanent visitor number (used by enrollment)."""

@@ -8,16 +8,16 @@ from core.faces import parse_face_search
 def test_person_id_valid_missing_malformed():
     got = parse_face_search(fixture_bytes("fdsearch_response.xml"))
     assert got == [
-        {"name": "Test Employee A", "person_id": "1"},  # direct <PID>, not ModelingStatus/PID
-        {"name": "Test Employee B", "person_id": "27"},
-        {"name": "No Pid Person", "person_id": None},
-        {"name": "Bad Pid Person", "person_id": None},
+        {"name": "Test Employee A", "person_id": "1", "custom_human_id": ""},  # direct <PID>, not ModelingStatus/PID
+        {"name": "Test Employee B", "person_id": "27", "custom_human_id": ""},
+        {"name": "No Pid Person", "person_id": None, "custom_human_id": ""},
+        {"name": "Bad Pid Person", "person_id": None, "custom_human_id": ""},
     ]
 
 
 def test_sensitive_fields_not_returned():
     for row in parse_face_search(fixture_bytes("fdsearch_response.xml")):
-        assert set(row) == {"name", "person_id"}
+        assert set(row) == {"name", "person_id", "custom_human_id"}
 
 
 def test_empty_and_malformed_xml():

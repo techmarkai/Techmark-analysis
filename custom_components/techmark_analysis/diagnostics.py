@@ -21,5 +21,11 @@ async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry) -> dict
         "counters": rt.counters,
         "correlation": {"attached": rt.correlator.attached, "uncorrelated_images": rt.correlator.uncorrelated_images},
         "clock_skew_seconds": rt.clock_skew,
+        "enrollment": {
+            "enabled": rt.enroller.cfg.enabled,
+            "pending": rt.enroller.pending,
+            "pending_bytes": rt.enroller.pending_bytes,
+            **rt.enroller.stats,
+        },
         "today": {k: v for k, v in rt.today.items() if k != "attendance"},
     }

@@ -21,6 +21,9 @@ from .const import (
     CONF_CUSTOMER_WINDOW,
     CONF_EMPLOYEE_FDID,
     CONF_EMPLOYEE_WINDOW,
+    CONF_ENROLL,
+    CONF_ENROLL_MIN_FACE_PX,
+    CONF_ENROLL_MIN_SCORE,
     CONF_MIN_FACE_QUALITY,
     CONF_MODEL,
     CONF_REPORT_TIME,
@@ -124,7 +127,10 @@ def _int(lo: int, hi: int):
 class TechmarkOptionsFlow(OptionsFlow):
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         if user_input is not None:
-            for key in (CONF_MIN_FACE_QUALITY, CONF_EMPLOYEE_WINDOW, CONF_CUSTOMER_WINDOW, CONF_RETENTION_DAYS):
+            for key in (
+                CONF_MIN_FACE_QUALITY, CONF_EMPLOYEE_WINDOW, CONF_CUSTOMER_WINDOW, CONF_RETENTION_DAYS,
+                CONF_ENROLL_MIN_SCORE, CONF_ENROLL_MIN_FACE_PX,
+            ):
                 user_input[key] = int(user_input[key])
             return self.async_create_entry(data=user_input)
         o = {**DEFAULT_OPTIONS, **self.config_entry.options}
@@ -137,6 +143,9 @@ class TechmarkOptionsFlow(OptionsFlow):
                 vol.Required(CONF_CUSTOMER_FDID, default=o[CONF_CUSTOMER_FDID]): str,
                 vol.Required(CONF_REPORT_TIME, default=o[CONF_REPORT_TIME]): selector.TimeSelector(),
                 vol.Required(CONF_RETENTION_DAYS, default=o[CONF_RETENTION_DAYS]): _int(30, 3650),
+                vol.Required(CONF_ENROLL, default=o[CONF_ENROLL]): bool,
+                vol.Required(CONF_ENROLL_MIN_SCORE, default=o[CONF_ENROLL_MIN_SCORE]): _int(50, 100),
+                vol.Required(CONF_ENROLL_MIN_FACE_PX, default=o[CONF_ENROLL_MIN_FACE_PX]): _int(40, 1000),
             }
         )
         return self.async_show_form(step_id="init", data_schema=schema)

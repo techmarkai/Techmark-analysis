@@ -63,3 +63,11 @@ export_visitors:
         number:
           min: 1
           mode: box
+erase_visitor:
+  fields:
+    visitor_id:
+      required: true
+      selector:
+        number:
+          min: 1
+          mode: box

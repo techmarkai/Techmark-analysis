@@ -92,6 +92,14 @@ def async_setup_services(hass: HomeAssistant) -> None:
         result["download_url"] = _download_url(hass, result["filename"])
         return result if call.return_response else None
 
+    async def erase_visitor(call: ServiceCall) -> ServiceResponse:
+        rt = _runtime(hass)
+        try:
+            result = await rt.async_erase_visitor(call.data["visitor_id"])
+        except ValueError as err:
+            raise ServiceValidationError(str(err)) from err
+        return result if call.return_response else None
+
     async def list_faces(call: ServiceCall) -> ServiceResponse:
         rt = _runtime(hass)
         fdid = next((f for f, role in rt.processor.cfg.roles.items() if role == call.data["library"]), None)
@@ -121,6 +129,14 @@ def async_setup_services(hass: HomeAssistant) -> None:
         "export_visitors",
         export_visitors,
         schema=VISITORS_SCHEMA,
+        supports_response=SupportsResponse.OPTIONAL,
+    )
+    async_register_admin_service(
+        hass,
+        DOMAIN,
+        "erase_visitor",
+        erase_visitor,
+        schema=vol.Schema({vol.Required("visitor_id"): vol.All(vol.Coerce(int), vol.Range(min=1))}),
         supports_response=SupportsResponse.OPTIONAL,
     )
     async_register_admin_service(

@@ -10,6 +10,10 @@ from .stream_parser import Part
 _DISPOSITION_NAME = re.compile(r'(?:file)?name="?([^";]+)"?', re.I)
 
 
+# Shared labels the camera puts on every image (observed in T-A); never identifiers.
+ROLE_LABELS = frozenset({"backgroundImage", "faceLibImage", "faceImage"})
+
+
 def image_ids(headers: dict[str, str]) -> set[str]:
     """Identifiers an image part declares. Single place to adapt after test T-3."""
     ids: set[str] = set()
@@ -17,6 +21,7 @@ def image_ids(headers: dict[str, str]) -> set[str]:
     if cid:
         ids.add(cid)
     ids.update(m.strip() for m in _DISPOSITION_NAME.findall(headers.get("content-disposition", "")) if m.strip())
+    ids -= ROLE_LABELS
     return ids
 
 

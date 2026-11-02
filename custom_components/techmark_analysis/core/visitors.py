@@ -37,6 +37,8 @@ def _hms(store: Store, ts: float) -> str:
 def visitor_report(store: Store, visitor_no: int) -> dict | None:
     if not store.query("SELECT 1 FROM visitors WHERE visitor_no=?", (visitor_no,)):
         return None
+    if store.query("SELECT 1 FROM erased_visitors WHERE visitor_no=?", (visitor_no,)):
+        return {"visitor_id": visitor_no, "erased": True, "visits": []}
     rows = store.query(
         "SELECT day, first, last, events FROM visit_days WHERE visitor_no=? ORDER BY day", (visitor_no,)
     )

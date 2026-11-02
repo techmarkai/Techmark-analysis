@@ -27,12 +27,16 @@ from .const import (
     CONF_CUSTOMER_WINDOW,
     CONF_EMPLOYEE_FDID,
     CONF_EMPLOYEE_WINDOW,
+    CONF_ENROLL,
+    CONF_ENROLL_MIN_FACE_PX,
+    CONF_ENROLL_MIN_SCORE,
     CONF_MIN_FACE_QUALITY,
     CONF_REPORT_TIME,
     CONF_RETENTION_DAYS,
     DB_FILENAME,
     DEFAULT_OPTIONS,
     DOMAIN,
+    EVENT_CUSTOMER_ENROLLED,
     EVENT_CUSTOMER_SEEN,
     EVENT_EMPLOYEE_SEEN,
     EVENT_UNMATCHED_FACE,
@@ -44,6 +48,9 @@ from .const import (
 from .core.attendance import attendance_rows, render_attendance_csv, resolve_range
 from .core.correlator import Correlator
 from .core.decoder import decode
+from .core.enroller import CameraRejected as EnrollRejected
+from .core.enroller import CameraTransient, EnrollConfig, Enroller, FaceUnusable
+from .core.facecrop import prepare_face
 from .core.models import (
     FaceCapture,
     FaceMatch,
@@ -66,7 +73,7 @@ from .core.visitors import (
     render_visitor_csv,
     visitor_report,
 )
-from .isapi import AuthError, CameraError, HikClient
+from .isapi import AuthError, CameraError, CameraRejected, HikClient
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -89,6 +96,19 @@ class TechmarkRuntime:
         self.store: Store | None = None
         self.processor = Processor(build_config(entry.options))
         self.correlator = Correlator()
+        o = {**DEFAULT_OPTIONS, **entry.options}
+        self.enroller = Enroller(
+            EnrollConfig(
+                enabled=bool(o[CONF_ENROLL]),
+                min_score=int(o[CONF_ENROLL_MIN_SCORE]),
+                min_face_px=int(o[CONF_ENROLL_MIN_FACE_PX]),
+            ),
+            reserve_visitor=lambda: self._job(self.store.create_visitor, dt_util.utcnow()),
+            link=lambda pid, vno: self._job(self.store.link_camera_id, pid, vno),
+            add_face=self._enroll_add_face,
+            find_by_name=lambda name: self.client.find_face_pids_by_name(self._customer_fdid, name),
+        )
+        self._last_snapshot: list[dict] = []
         self.connected = False
         self.today: dict = {}
         self.month: dict = {}
@@ -116,18 +136,27 @@ class TechmarkRuntime:
         last = await self._job(self.store.last_alive)
         if last is not None and now - last > timedelta(seconds=5):
             await self._job(self.store.start_gap, last, "home_assistant_offline")
+        self.enroller.cfg.salt = await self._job(self.store.enroll_salt)
+        left = await self._job(self.store.take_pending)
+        if left:
+            # alertStream has no replay and crops were memory-only: these candidates cannot be recovered.
+            await self._report_enroll_losses({"restart": len(left)})
         await self._check_apps()
         await self._refresh()
         self._task = self.entry.async_create_background_task(self.hass, self._run(), f"{DOMAIN}_stream")
         rt = dt_util.parse_time(str(self.entry.options.get(CONF_REPORT_TIME, DEFAULT_OPTIONS[CONF_REPORT_TIME])))
         self._unsubs += [
             async_track_time_interval(self.hass, self._alive, timedelta(seconds=60)),
+            async_track_time_interval(self.hass, self._enroll_tick, timedelta(seconds=5)),
             async_track_time_change(self.hass, self._midnight, hour=0, minute=0, second=5),
             async_track_time_change(self.hass, self._daily_report, hour=rt.hour, minute=rt.minute, second=0),
             async_track_time_change(self.hass, self._monthly_report, hour=0, minute=10, second=0),
         ]
 
     async def async_stop(self) -> None:
+        if self.enroller.pending and self.store:
+            # Crops are memory-only; metadata is saved so the next start reports them as lost.
+            await self._job(self.store.save_pending, self.enroller.snapshot(), dt_util.utcnow())
         for unsub in self._unsubs:
             unsub()
         if self._task:
@@ -201,9 +230,17 @@ class TechmarkRuntime:
     async def _process_part(self, part: Part) -> None:
         now = dt_util.utcnow()
         if part.content_type.startswith("image/"):
-            # Correlated by identifier only. Images are not used before enrollment (phase 5)
-            # and are discarded here; never stored.
-            self.correlator.add_image(part, monotonic())
+            # Correlated by identifier only. Kept in memory only for an open enrollment
+            # burst (enrollment enabled); otherwise discarded. Never written to disk.
+            owner = self.correlator.add_image(part, monotonic())
+            if isinstance(owner, FaceUnmatched) and self.enroller.wants(owner):
+                # Crop immediately; the scene image is released and never stored.
+                try:
+                    crop = await self._job(prepare_face, part.body, owner, self.enroller.cfg.min_face_px)
+                except FaceUnusable:
+                    self.enroller.reject_image(owner)
+                else:
+                    self.enroller.attach_crop(owner, crop)
             return
         event = decode(part)
         if event is None:
@@ -213,6 +250,8 @@ class TechmarkRuntime:
             self.correlator.add_event(event, event.ids, monotonic())
         self._check_skew(getattr(event, "camera_time", None), now)
         outcomes = self.processor.handle(event, now)
+        if any(isinstance(o, UnmatchedCounted) for o in outcomes):
+            self.enroller.offer(event, monotonic())
         if not outcomes:
             return
         await self._job(self.store.apply, outcomes)
@@ -317,6 +356,76 @@ class TechmarkRuntime:
             "file": await self._write_csv(name, render_attendance_csv(rows)),
             "filename": name,
         }
+
+    @property
+    def _customer_fdid(self) -> str:
+        return next(f for f, role in self.processor.cfg.roles.items() if role == CUSTOMER)
+
+    async def _enroll_add_face(self, name: str, jpeg: bytes) -> str:
+        try:
+            return await self.client.add_face(self._customer_fdid, name, jpeg)
+        except CameraRejected as err:
+            raise EnrollRejected(str(err)) from err
+        except CameraError as err:  # unreachable / timeout / auth: retry after lookup
+            raise CameraTransient(str(err)) from err
+
+    async def _enroll_tick(self, _now=None) -> None:
+        try:
+            enrolled = await self.enroller.tick(monotonic())
+        except (CameraError, StoreError) as err:
+            _LOGGER.warning("Enrollment step failed, candidates kept for retry: %s", err)
+            return
+        await self._sync_enroll_accounting()
+        for vno in enrolled:
+            self.hass.bus.async_fire(EVENT_CUSTOMER_ENROLLED, {"visitor_id": vno})
+        if enrolled:
+            await self._refresh()
+
+    async def _sync_enroll_accounting(self) -> None:
+        """Persist pending metadata (for restart loss accounting) and surface every loss."""
+        snap = self.enroller.snapshot()
+        if snap != self._last_snapshot:
+            await self._job(self.store.save_pending, snap, dt_util.utcnow())
+            self._last_snapshot = snap
+        losses = self.enroller.drain_losses()
+        if losses:
+            await self._report_enroll_losses(losses)
+
+    async def _report_enroll_losses(self, losses: dict[str, int]) -> None:
+        await self._job(self.store.record_enroll_losses, losses, dt_util.utcnow())
+        totals = await self._job(self.store.enroll_loss_totals)
+        _LOGGER.warning("Enrollment candidates lost: %s (totals %s)", losses, totals)
+        ir.async_create_issue(
+            self.hass,
+            DOMAIN,
+            "enrollment_candidates_lost",
+            is_fixable=False,
+            severity=ir.IssueSeverity.WARNING,
+            translation_key="enrollment_candidates_lost",
+            translation_placeholders={
+                "total": str(sum(totals.values())),
+                "reasons": ", ".join(f"{k}: {v}" for k, v in sorted(totals.items())),
+            },
+        )
+
+    async def async_erase_visitor(self, visitor_no: int) -> dict:
+        """Erase one visitor's history (admin request). Removes exported visitor CSVs too."""
+        if not await self._job(self.store.erase_visitor, visitor_no, dt_util.utcnow()):
+            raise ValueError(f"unknown visitor {visitor_no}")
+        folder = Path(self.hass.config.path(REPORT_DIR))
+
+        def remove() -> list[str]:
+            gone = []
+            for pattern in (f"visitor_{visitor_no}.csv", "visitors_annual_*.csv", "visitors_monthly_*.csv"):
+                for f in folder.glob(pattern):
+                    f.unlink(missing_ok=True)
+                    gone.append(f.name)
+            return gone
+
+        removed = await self._job(remove)
+        await self._refresh()
+        return {"visitor_id": visitor_no, "erased": True, "removed_files": removed,
+                "note": "Face record(s) remain on the camera; delete them in the camera's face library."}
 
     async def _write_csv(self, name: str, text: str) -> str:
         folder = Path(self.hass.config.path(REPORT_DIR))

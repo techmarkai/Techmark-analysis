@@ -28,8 +28,8 @@ def prepare_face(scene: bytes, event: FaceUnmatched, min_face_px: int) -> bytes:
         from PIL import Image  # noqa: PLC0415 - optional, see module docstring
     except ImportError as err:
         raise FaceUnusable("image library unavailable") from err
-    face, crop = event.face_rect, event.rec_rect
-    if not (_valid_rect(face) and _valid_rect(crop)):
+    face = event.face_rect
+    if not _valid_rect(face):
         raise FaceUnusable("invalid face coordinates")
     try:
         img = Image.open(io.BytesIO(scene))
@@ -39,11 +39,15 @@ def prepare_face(scene: bytes, event: FaceUnmatched, min_face_px: int) -> bytes:
     w, h = img.size  # actual pixels, never assumed
     if float(face["width"]) * w < min_face_px:
         raise FaceUnusable("face too small")
+    # Crop around faceRect with one face-size of margin per side. The camera's recommendFaceRect is NOT
+    # a face crop (observed: ~half-frame torso box that cuts the face off -> faceFeatureModelingError).
+    fx, fy = float(face["x"]) * w, float(face["y"]) * h
+    fw, fh = float(face["width"]) * w, float(face["height"]) * h
     box = (
-        int(float(crop["x"]) * w),
-        int(float(crop["y"]) * h),
-        int((float(crop["x"]) + float(crop["width"])) * w),
-        int((float(crop["y"]) + float(crop["height"])) * h),
+        int(max(0, fx - fw)),
+        int(max(0, fy - fh)),
+        int(min(w, fx + 2 * fw)),
+        int(min(h, fy + 2 * fh)),
     )
     out = img.convert("RGB").crop(box)
     for quality in (90, 80, 70, 60):

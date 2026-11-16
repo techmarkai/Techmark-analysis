@@ -286,7 +286,7 @@ def test_face_crop_validates_and_fits_upload_limit():
     pil.new("RGB", (2560, 1504), (120, 130, 140)).save(buf, "JPEG")  # synthetic, no face
     scene = buf.getvalue()
     out = prepare_face(scene, ev("a"), 120)
-    assert len(out) <= MAX_UPLOAD_BYTES and pil.open(io.BytesIO(out)).size == (512, 526)
+    assert len(out) <= MAX_UPLOAD_BYTES and pil.open(io.BytesIO(out)).size == (768, 902)  # faceRect 0.1x0.2 plus 1x margin per side
     with pytest.raises(FaceUnusable):
         prepare_face(scene, ev("a"), 300)  # 0.1 * 2560 = 256 px < 300
     with pytest.raises(FaceUnusable):

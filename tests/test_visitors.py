@@ -91,6 +91,18 @@ def test_out_of_order_events_keep_first_last(sp):
     assert (v["first_seen"], v["last_seen"]) == ("09:00:00", "15:00:00")
 
 
+def test_enrollment_counts_first_visit(sp):
+    s, p = sp
+    t = at(TZ, 2026, 3, 1, 10)
+    v = s.create_visitor(t)
+    name = f"TMV-{s.enroll_salt()}-{v:06d}"
+    s.link_camera_id(name, v)
+    s.record_visit(name, t)  # modeling confirmed: the sighting that enrolled them is their first visit
+    assert visitor_report(s, v)["visit_days"] == 1
+    feed(s, p, [(FaceMatch("2", "Customers", "9", name, 0.9, 80, None), t + timedelta(minutes=5))])
+    assert visitor_report(s, v)["visit_days"] == 1 and s.query("SELECT COUNT(*) FROM visitors")[0][0] == 1
+
+
 def test_employees_and_unmatched_never_visitors(sp):
     s, p = sp
     feed(s, p, [(emp("1"), at(TZ, 2026, 2, 1, 9)), (FaceUnmatched(95, 0.0, None, None, None), at(TZ, 2026, 2, 1, 9))])

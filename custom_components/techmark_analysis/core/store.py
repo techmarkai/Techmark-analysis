@@ -296,6 +296,10 @@ class Store:
         self._write(lambda db: out.append(self._new_visitor(db, now)))
         return out[0]
 
+    def record_visit(self, camera_pid: str, ts: datetime) -> None:
+        """Count a visit day without a camera match: the sighting that enrolled a new customer."""
+        self._write(lambda db: self._visit(db, camera_pid, ts))
+
     def link_camera_id(self, camera_pid: str, visitor_no: int) -> None:
         """Map a camera person ID to a visitor. Never silently remaps an existing link."""
 

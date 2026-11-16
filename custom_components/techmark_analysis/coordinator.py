@@ -55,6 +55,7 @@ from .core.enroller import (
     Enroller,
     EnrollPersistence,
     FaceUnusable,
+    camera_name,
     summarize,
 )
 from .core.facecrop import prepare_face
@@ -445,6 +446,8 @@ class TechmarkRuntime:
             return
         await self._sync_enroll_accounting()
         for vno in enrolled:
+            # A new customer is here today: count the visit now, not only when the camera matches them later.
+            await self._job(self.store.record_visit, camera_name(self.enroller.cfg.salt, vno), dt_util.utcnow())
             self.hass.bus.async_fire(EVENT_CUSTOMER_ENROLLED, {"visitor_id": vno})
         if enrolled:
             await self._refresh()

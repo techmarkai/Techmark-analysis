@@ -40,9 +40,18 @@
           "retention_days": "Data retention (days)",
           "enrollment_enabled": "Automatic customer enrollment (adds new faces to the camera's Customers library)",
           "min_enroll_score": "Minimum face quality to enroll (50-100)",
-          "min_enroll_face_px": "Minimum face width to enroll (pixels)"
+          "min_enroll_face_px": "Minimum face width to enroll (pixels)",
+          "attendance_report_dir": "Folder for employee attendance and daily/monthly reports",
+          "visitor_report_dir": "Folder for visitor reports"
+        },
+        "data_description": {
+          "attendance_report_dir": "Relative to the Home Assistant config folder, or an absolute path allowed by allowlist_external_dirs (for example /media/reports).",
+          "visitor_report_dir": "Same rules as above. Can be the same folder."
         }
       }
+    },
+    "error": {
+      "invalid_report_dir": "Folder not allowed. Use a folder inside the config folder, or add it to allowlist_external_dirs."
     }
   },
   "issues": {

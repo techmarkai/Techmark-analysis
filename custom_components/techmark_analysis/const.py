@@ -14,8 +14,12 @@ CONF_RETENTION_DAYS = "retention_days"
 CONF_ENROLL = "enrollment_enabled"
 CONF_ENROLL_MIN_SCORE = "min_enroll_score"
 CONF_ENROLL_MIN_FACE_PX = "min_enroll_face_px"
+CONF_ATTENDANCE_DIR = "attendance_report_dir"
+CONF_VISITOR_DIR = "visitor_report_dir"
 
 DEFAULT_OPTIONS = {
+    CONF_ATTENDANCE_DIR: "techmark_reports",
+    CONF_VISITOR_DIR: "techmark_reports",
     CONF_MIN_FACE_QUALITY: 50,
     CONF_EMPLOYEE_WINDOW: 10,
     CONF_CUSTOMER_WINDOW: 30,
@@ -35,7 +39,6 @@ WATCHDOG_SECONDS = 60
 BACKOFF_MAX_SECONDS = 60
 CLOCK_SKEW_LIMIT_SECONDS = 120
 DB_FILENAME = "techmark_analysis.db"
-REPORT_DIR = "techmark_reports"
 
 SIGNAL_UPDATE = f"{DOMAIN}_update_{{}}"
 EVENT_EMPLOYEE_SEEN = f"{DOMAIN}_employee_seen"

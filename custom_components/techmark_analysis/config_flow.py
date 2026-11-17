@@ -17,6 +17,7 @@ from homeassistant.helpers import selector
 from homeassistant.helpers.httpx_client import get_async_client
 
 from .const import (
+    CONF_ATTENDANCE_DIR,
     CONF_CUSTOMER_FDID,
     CONF_CUSTOMER_WINDOW,
     CONF_EMPLOYEE_FDID,
@@ -29,9 +30,11 @@ from .const import (
     CONF_REPORT_TIME,
     CONF_RETENTION_DAYS,
     CONF_SERIAL,
+    CONF_VISITOR_DIR,
     DEFAULT_OPTIONS,
     DOMAIN,
 )
+from .core.reportdir import resolve_report_dir
 from .isapi import AuthError, CameraError, HikClient
 
 USER_SCHEMA = vol.Schema(
@@ -126,16 +129,24 @@ def _int(lo: int, hi: int):
 
 class TechmarkOptionsFlow(OptionsFlow):
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        errors: dict[str, str] = {}
         if user_input is not None:
             for key in (
                 CONF_MIN_FACE_QUALITY, CONF_EMPLOYEE_WINDOW, CONF_CUSTOMER_WINDOW, CONF_RETENTION_DAYS,
                 CONF_ENROLL_MIN_SCORE, CONF_ENROLL_MIN_FACE_PX,
             ):
                 user_input[key] = int(user_input[key])
-            return self.async_create_entry(data=user_input)
-        o = {**DEFAULT_OPTIONS, **self.config_entry.options}
+            for key in (CONF_ATTENDANCE_DIR, CONF_VISITOR_DIR):
+                user_input[key] = user_input[key].strip()
+                if resolve_report_dir(user_input[key], self.hass.config.path(), self.hass.config.is_allowed_path) is None:
+                    errors[key] = "invalid_report_dir"
+            if not errors:
+                return self.async_create_entry(data=user_input)
+        o = {**DEFAULT_OPTIONS, **(user_input or self.config_entry.options)}
         schema = vol.Schema(
             {
+                vol.Required(CONF_ATTENDANCE_DIR, default=o[CONF_ATTENDANCE_DIR]): str,
+                vol.Required(CONF_VISITOR_DIR, default=o[CONF_VISITOR_DIR]): str,
                 vol.Required(CONF_MIN_FACE_QUALITY, default=o[CONF_MIN_FACE_QUALITY]): _int(0, 100),
                 vol.Required(CONF_EMPLOYEE_WINDOW, default=o[CONF_EMPLOYEE_WINDOW]): _int(5, 240),
                 vol.Required(CONF_CUSTOMER_WINDOW, default=o[CONF_CUSTOMER_WINDOW]): _int(5, 240),
@@ -148,4 +159,4 @@ class TechmarkOptionsFlow(OptionsFlow):
                 vol.Required(CONF_ENROLL_MIN_FACE_PX, default=o[CONF_ENROLL_MIN_FACE_PX]): _int(40, 1000),
             }
         )
-        return self.async_show_form(step_id="init", data_schema=schema)
+        return self.async_show_form(step_id="init", data_schema=schema, errors=errors)

@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import re
 from http import HTTPStatus
-from pathlib import Path
 from time import monotonic
 
 from aiohttp import web
 from homeassistant.components.http import KEY_HASS, HomeAssistantView
+from homeassistant.config_entries import ConfigEntryState
 
-from .const import REPORT_DIR
+from .const import CONF_ATTENDANCE_DIR, CONF_VISITOR_DIR, DOMAIN
 
 EXPORT_URL = "/api/techmark_analysis/export/{filename}"
 FILENAME_RE = re.compile(
@@ -35,7 +35,11 @@ class AttendanceExportView(HomeAssistantView):
         if not FILENAME_RE.fullmatch(filename):  # also blocks path traversal
             return web.Response(status=HTTPStatus.NOT_FOUND)
         hass = request.app[KEY_HASS]
-        path = Path(hass.config.path(REPORT_DIR, filename))
+        entry = next((e for e in hass.config_entries.async_entries(DOMAIN) if e.state is ConfigEntryState.LOADED), None)
+        if entry is None:
+            return web.Response(status=HTTPStatus.NOT_FOUND)
+        option = CONF_ATTENDANCE_DIR if filename.startswith("attendance_") else CONF_VISITOR_DIR
+        path = entry.runtime_data.report_folder(option) / filename
         if not await hass.async_add_executor_job(path.is_file):
             return web.Response(status=HTTPStatus.NOT_FOUND)
         sig = request.query.get("authSig")

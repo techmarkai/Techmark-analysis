@@ -23,6 +23,7 @@ from homeassistant.util import dt as dt_util
 from .const import (
     BACKOFF_MAX_SECONDS,
     CLOCK_SKEW_LIMIT_SECONDS,
+    CONF_ATTENDANCE_DIR,
     CONF_CUSTOMER_FDID,
     CONF_CUSTOMER_WINDOW,
     CONF_EMPLOYEE_FDID,
@@ -33,6 +34,7 @@ from .const import (
     CONF_MIN_FACE_QUALITY,
     CONF_REPORT_TIME,
     CONF_RETENTION_DAYS,
+    CONF_VISITOR_DIR,
     DB_FILENAME,
     DEFAULT_OPTIONS,
     DOMAIN,
@@ -41,7 +43,6 @@ from .const import (
     EVENT_EMPLOYEE_SEEN,
     EVENT_UNMATCHED_FACE,
     EXPECTED_APPS,
-    REPORT_DIR,
     SIGNAL_UPDATE,
     WATCHDOG_SECONDS,
 )
@@ -70,6 +71,7 @@ from .core.models import (
 )
 from .core.processor import CUSTOMER, EMPLOYEE, Processor, ProcessorConfig
 from .core.report import render_csv, render_markdown
+from .core.reportdir import DEFAULT_REPORT_DIR, resolve_report_dir
 from .core.stats import daily, monthly
 from .core.store import Store, StoreError
 from .core.stream_parser import MultipartParser, Part
@@ -371,9 +373,19 @@ class TechmarkRuntime:
             "start_date": first.isoformat(),
             "end_date": last.isoformat(),
             "rows": len(rows),
-            "file": await self._write_csv(name, render_attendance_csv(rows)),
+            "file": await self._write_csv(name, render_attendance_csv(rows), CONF_ATTENDANCE_DIR),
             "filename": name,
         }
+
+    def report_folder(self, option: str) -> Path:
+        """Configured report folder (attendance or visitor). Falls back to the default if no longer allowed."""
+        value = self.entry.options.get(option, DEFAULT_OPTIONS[option])
+        cfg = self.hass.config
+        path = resolve_report_dir(value, cfg.path(), cfg.is_allowed_path)
+        if path is None:
+            _LOGGER.warning("Report folder %r is not allowed; using %s instead", value, DEFAULT_REPORT_DIR)
+            path = resolve_report_dir(DEFAULT_REPORT_DIR, cfg.path(), cfg.is_allowed_path)
+        return path
 
     @property
     def _customer_fdid(self) -> str:
@@ -483,7 +495,7 @@ class TechmarkRuntime:
         """Erase one visitor's history (admin request). Removes exported visitor CSVs too."""
         if not await self._job(self.store.erase_visitor, visitor_no, dt_util.utcnow()):
             raise ValueError(f"unknown visitor {visitor_no}")
-        folder = Path(self.hass.config.path(REPORT_DIR))
+        folder = self.report_folder(CONF_VISITOR_DIR)
 
         def remove() -> list[str]:
             gone = []
@@ -498,11 +510,11 @@ class TechmarkRuntime:
         return {"visitor_id": visitor_no, "erased": True, "removed_files": removed,
                 "note": "Face record(s) remain on the camera; delete them in the camera's face library."}
 
-    async def _write_csv(self, name: str, text: str) -> str:
-        folder = Path(self.hass.config.path(REPORT_DIR))
+    async def _write_csv(self, name: str, text: str, option: str) -> str:
+        folder = self.report_folder(option)
 
         def write() -> str:
-            folder.mkdir(exist_ok=True)
+            folder.mkdir(parents=True, exist_ok=True)
             path = folder / name
             path.write_text(text, encoding="utf-8-sig", newline="")  # BOM: Excel opens Unicode correctly
             return str(path)
@@ -528,7 +540,7 @@ class TechmarkRuntime:
                 rows = await self._job(monthly_rows, self.store, year)
                 name, text = f"visitors_monthly_{year}.csv", render_monthly_csv(rows)
             summary = await self._job(period_summary, self.store, date(year, 1, 1), date(year, 12, 31))
-        return {"report": report, "summary": summary, "file": await self._write_csv(name, text), "filename": name}
+        return {"report": report, "summary": summary, "file": await self._write_csv(name, text, CONF_VISITOR_DIR), "filename": name}
 
     async def async_generate_report(self, period: str, day: date) -> dict:
         now = dt_util.utcnow()
@@ -538,11 +550,11 @@ class TechmarkRuntime:
         else:
             stats = await self._job(daily, self.store, day, now)
             name, title = day.isoformat(), f"Techmark daily report {day.isoformat()}"
-        folder = Path(self.hass.config.path(REPORT_DIR))
+        folder = self.report_folder(CONF_ATTENDANCE_DIR)
         md, csv_text = render_markdown(stats, title), render_csv(stats)
 
         def write() -> list[str]:
-            folder.mkdir(exist_ok=True)
+            folder.mkdir(parents=True, exist_ok=True)
             paths = [folder / f"{name}.md", folder / f"{name}.csv"]
             paths[0].write_text(md, encoding="utf-8")
             paths[1].write_text(csv_text, encoding="utf-8")

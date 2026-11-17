@@ -34,7 +34,7 @@ from .const import (
     DEFAULT_OPTIONS,
     DOMAIN,
 )
-from .core.reportdir import resolve_report_dir
+from .core.reportdir import DEFAULT_REPORT_DIR, list_media_folders, resolve_report_dir
 from .isapi import AuthError, CameraError, HikClient
 
 USER_SCHEMA = vol.Schema(
@@ -130,6 +130,7 @@ def _int(lo: int, hi: int):
 class TechmarkOptionsFlow(OptionsFlow):
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         errors: dict[str, str] = {}
+        cfg = self.hass.config
         if user_input is not None:
             for key in (
                 CONF_MIN_FACE_QUALITY, CONF_EMPLOYEE_WINDOW, CONF_CUSTOMER_WINDOW, CONF_RETENTION_DAYS,
@@ -138,15 +139,26 @@ class TechmarkOptionsFlow(OptionsFlow):
                 user_input[key] = int(user_input[key])
             for key in (CONF_ATTENDANCE_DIR, CONF_VISITOR_DIR):
                 user_input[key] = user_input[key].strip()
-                if resolve_report_dir(user_input[key], self.hass.config.path(), self.hass.config.is_allowed_path) is None:
+                if resolve_report_dir(user_input[key], cfg.path(), cfg.is_allowed_path, cfg.media_dirs) is None:
                     errors[key] = "invalid_report_dir"
             if not errors:
                 return self.async_create_entry(data=user_input)
         o = {**DEFAULT_OPTIONS, **(user_input or self.config_entry.options)}
+        found = await self.hass.async_add_executor_job(list_media_folders, cfg.media_dirs)
+
+        def folders(current: str) -> selector.SelectSelector:
+            # Dropdown of folders found under the media directories; any allowed path can still be typed.
+            values = list(dict.fromkeys([DEFAULT_REPORT_DIR, current, *found]))
+            return selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=values, custom_value=True, mode=selector.SelectSelectorMode.DROPDOWN
+                )
+            )
+
         schema = vol.Schema(
             {
-                vol.Required(CONF_ATTENDANCE_DIR, default=o[CONF_ATTENDANCE_DIR]): str,
-                vol.Required(CONF_VISITOR_DIR, default=o[CONF_VISITOR_DIR]): str,
+                vol.Required(CONF_ATTENDANCE_DIR, default=o[CONF_ATTENDANCE_DIR]): folders(o[CONF_ATTENDANCE_DIR]),
+                vol.Required(CONF_VISITOR_DIR, default=o[CONF_VISITOR_DIR]): folders(o[CONF_VISITOR_DIR]),
                 vol.Required(CONF_MIN_FACE_QUALITY, default=o[CONF_MIN_FACE_QUALITY]): _int(0, 100),
                 vol.Required(CONF_EMPLOYEE_WINDOW, default=o[CONF_EMPLOYEE_WINDOW]): _int(5, 240),
                 vol.Required(CONF_CUSTOMER_WINDOW, default=o[CONF_CUSTOMER_WINDOW]): _int(5, 240),

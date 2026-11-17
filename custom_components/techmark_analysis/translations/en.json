@@ -45,7 +45,7 @@
           "visitor_report_dir": "Folder for visitor reports"
         },
         "data_description": {
-          "attendance_report_dir": "Relative to the Home Assistant config folder, or an absolute path allowed by allowlist_external_dirs (for example /media/reports).",
+          "attendance_report_dir": "Pick a folder from the list (folders under your media directories, as media-source://media_source/local/... paths) or type one: relative to the config folder, a media-source path, or an absolute path allowed by allowlist_external_dirs.",
           "visitor_report_dir": "Same rules as above. Can be the same folder."
         }
       }

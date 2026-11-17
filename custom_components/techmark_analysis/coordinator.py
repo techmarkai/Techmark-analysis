@@ -381,10 +381,10 @@ class TechmarkRuntime:
         """Configured report folder (attendance or visitor). Falls back to the default if no longer allowed."""
         value = self.entry.options.get(option, DEFAULT_OPTIONS[option])
         cfg = self.hass.config
-        path = resolve_report_dir(value, cfg.path(), cfg.is_allowed_path)
+        path = resolve_report_dir(value, cfg.path(), cfg.is_allowed_path, cfg.media_dirs)
         if path is None:
             _LOGGER.warning("Report folder %r is not allowed; using %s instead", value, DEFAULT_REPORT_DIR)
-            path = resolve_report_dir(DEFAULT_REPORT_DIR, cfg.path(), cfg.is_allowed_path)
+            path = resolve_report_dir(DEFAULT_REPORT_DIR, cfg.path(), cfg.is_allowed_path, cfg.media_dirs)
         return path
 
     @property

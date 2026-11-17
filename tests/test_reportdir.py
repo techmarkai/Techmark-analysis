@@ -17,3 +17,26 @@ def test_report_dir_rules(tmp_path):
     assert r(str(tmp_path / "elsewhere")) is None  # absolute, not allowlisted
     assert r("../elsewhere") is None  # traversal out of config
     assert r("a/../../elsewhere") is None
+
+
+def test_media_source_uri_and_folder_list(tmp_path):
+    from core.reportdir import list_media_folders
+
+    cfg, media = tmp_path / "config", tmp_path / "media"
+    (media / "novia_media" / "sub").mkdir(parents=True)
+    (media / ".hidden").mkdir()
+    cfg.mkdir()
+    dirs = {"local": str(media)}
+    deny = lambda p: False  # noqa: E731
+    uri = "media-source://media_source/local/novia_media/"
+    assert resolve_report_dir(uri, str(cfg), deny, dirs) == (media / "novia_media").resolve()
+    assert resolve_report_dir("media-source://media_source/local/new_folder", str(cfg), deny, dirs) == (media / "new_folder").resolve()
+    assert resolve_report_dir("media-source://media_source/local/../../x", str(cfg), deny, dirs) is None  # traversal
+    assert resolve_report_dir("media-source://media_source/other/x", str(cfg), deny, dirs) is None  # unknown source
+    assert resolve_report_dir(str(media / "novia_media"), str(cfg), deny, dirs) is not None  # absolute inside media dir
+    assert resolve_report_dir(uri, str(cfg), deny, None) is None  # no media dirs known
+    assert list_media_folders(dirs) == [
+        "media-source://media_source/local/",
+        "media-source://media_source/local/novia_media/",
+        "media-source://media_source/local/novia_media/sub/",
+    ]

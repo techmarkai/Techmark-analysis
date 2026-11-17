@@ -47,6 +47,35 @@ def resolve_report_dir(
     return None
 
 
+def write_readonly(path: Path, text: str, encoding: str = "utf-8", newline: str | None = None) -> None:
+    """Write a report so that it ends up read-only (mode 0444, the read-only flag on SMB shares).
+
+    A temporary file is written, locked, then moved over the target, so regenerating a report with
+    the same name replaces the old read-only file instead of failing, and a reader never sees a
+    half-written file.
+    """
+    tmp = path.with_name(f".{path.name}.tmp")
+    tmp.write_text(text, encoding=encoding, newline=newline)
+    try:
+        tmp.chmod(0o444)
+        try:
+            os.replace(tmp, path)
+        except PermissionError:  # Windows and some network mounts refuse to replace a read-only file
+            remove_report(path)
+            os.replace(tmp, path)
+    finally:
+        remove_report(tmp)
+
+
+def remove_report(path: Path) -> None:
+    """Delete a report even though it is read-only (unlock, then unlink)."""
+    try:
+        path.chmod(0o666)
+    except OSError:
+        pass
+    path.unlink(missing_ok=True)
+
+
 def list_media_folders(media_dirs: Mapping[str, str], max_depth: int = 2, limit: int = 200) -> list[str]:
     """media-source URIs of the folders under each media directory (for the options dropdown)."""
     out: list[str] = []

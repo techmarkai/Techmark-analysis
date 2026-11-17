@@ -40,3 +40,16 @@ def test_media_source_uri_and_folder_list(tmp_path):
         "media-source://media_source/local/novia_media/",
         "media-source://media_source/local/novia_media/sub/",
     ]
+
+
+def test_reports_are_written_read_only_and_can_be_regenerated(tmp_path):
+    import stat
+
+    from core.reportdir import write_readonly
+
+    f = tmp_path / "attendance.csv"
+    write_readonly(f, "first", "utf-8-sig", "")
+    assert f.read_bytes() == b"\xef\xbb\xbffirst" and not f.stat().st_mode & (stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH)
+    write_readonly(f, "second")  # same name again: replaces the read-only file
+    assert f.read_text() == "second" and not f.stat().st_mode & stat.S_IWUSR
+    assert [p.name for p in tmp_path.iterdir()] == ["attendance.csv"]  # no temp file left behind

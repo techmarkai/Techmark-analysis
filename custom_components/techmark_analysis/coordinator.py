@@ -71,7 +71,12 @@ from .core.models import (
 )
 from .core.processor import CUSTOMER, EMPLOYEE, Processor, ProcessorConfig
 from .core.report import render_csv, render_markdown
-from .core.reportdir import DEFAULT_REPORT_DIR, resolve_report_dir
+from .core.reportdir import (
+    DEFAULT_REPORT_DIR,
+    remove_report,
+    resolve_report_dir,
+    write_readonly,
+)
 from .core.stats import daily, monthly
 from .core.store import Store, StoreError
 from .core.stream_parser import MultipartParser, Part
@@ -504,7 +509,7 @@ class TechmarkRuntime:
             gone = []
             for pattern in (f"visitor_{visitor_no}.csv", "visitors_annual_*.csv", "visitors_monthly_*.csv"):
                 for f in folder.glob(pattern):
-                    f.unlink(missing_ok=True)
+                    remove_report(f)
                     gone.append(f.name)
             return gone
 
@@ -519,7 +524,7 @@ class TechmarkRuntime:
         def write() -> str:
             folder.mkdir(parents=True, exist_ok=True)
             path = folder / name
-            path.write_text(text, encoding="utf-8-sig", newline="")  # BOM: Excel opens Unicode correctly
+            write_readonly(path, text, "utf-8-sig", "")  # BOM: Excel opens Unicode correctly
             return str(path)
 
         return await self._job(write)
@@ -559,8 +564,8 @@ class TechmarkRuntime:
         def write() -> list[str]:
             folder.mkdir(parents=True, exist_ok=True)
             paths = [folder / f"{name}.md", folder / f"{name}.csv"]
-            paths[0].write_text(md, encoding="utf-8")
-            paths[1].write_text(csv_text, encoding="utf-8")
+            write_readonly(paths[0], md)
+            write_readonly(paths[1], csv_text)
             return [str(p) for p in paths]
 
         files = await self._job(write)

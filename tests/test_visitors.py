@@ -167,3 +167,21 @@ def test_csv_outputs(sp):
     monthly = list(csv.reader(io.StringIO(render_monthly_csv(monthly_rows(s, 2026)))))
     assert monthly[0][0] == "Month" and len(monthly) == 13
     assert visitor_report(s, 99) is None
+
+
+def test_delete_database_files_removes_db_and_side_files(tmp_path):
+    from core.store import Store, delete_database_files
+
+    db = tmp_path / "t.db"
+    s = Store(str(db), ZoneInfo("Etc/GMT-3"))
+    s.create_visitor(datetime(2026, 1, 5, 9, tzinfo=timezone.utc))
+    s.close()
+    (tmp_path / "t.db-wal").write_bytes(b"x")
+    keep = tmp_path / "report.csv"
+    keep.write_text("keep")
+    assert set(delete_database_files(str(db))) >= {"t.db", "t.db-wal"}
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["report.csv"]  # only the database goes
+    assert delete_database_files(str(db)) == []  # nothing left: no error
+    fresh = Store(str(db), ZoneInfo("Etc/GMT-3"))
+    assert fresh.create_visitor(datetime(2026, 1, 5, 9, tzinfo=timezone.utc)) == 1  # numbering restarts
+    fresh.close()

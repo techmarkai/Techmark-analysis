@@ -5,6 +5,7 @@ Stores no images, face model data or certificate numbers.
 
 from __future__ import annotations
 
+import os
 import secrets
 import sqlite3
 import threading
@@ -65,6 +66,18 @@ CREATE TABLE IF NOT EXISTS enroll_losses(id INTEGER PRIMARY KEY, at REAL NOT NUL
 
 class StoreError(Exception):
     """Persistent storage failure."""
+
+
+def delete_database_files(path: str) -> list[str]:
+    """Delete the SQLite database with its WAL/SHM side files (fresh start). Returns the names removed."""
+    removed = []
+    for suffix in ("", "-wal", "-shm"):
+        try:
+            os.unlink(path + suffix)
+            removed.append(os.path.basename(path + suffix))
+        except FileNotFoundError:
+            pass
+    return removed
 
 
 def _ts(dt: datetime) -> float:

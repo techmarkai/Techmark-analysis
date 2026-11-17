@@ -53,3 +53,22 @@ def test_reports_are_written_read_only_and_can_be_regenerated(tmp_path):
     write_readonly(f, "second")  # same name again: replaces the read-only file
     assert f.read_text() == "second" and not f.stat().st_mode & stat.S_IWUSR
     assert [p.name for p in tmp_path.iterdir()] == ["attendance.csv"]  # no temp file left behind
+
+
+def test_remove_report_never_chmods_a_symlink_target(tmp_path):
+    import stat
+
+    import pytest
+    from core.reportdir import remove_report
+
+    victim = tmp_path / "victim.txt"
+    victim.write_text("keep")
+    victim.chmod(0o444)
+    link = tmp_path / "report.csv"
+    try:
+        os.symlink(victim, link)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks unavailable")
+    remove_report(link)
+    assert not link.exists() and not link.is_symlink() and victim.read_text() == "keep"
+    assert not victim.stat().st_mode & stat.S_IWUSR  # target untouched

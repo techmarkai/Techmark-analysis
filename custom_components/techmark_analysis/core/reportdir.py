@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+import stat
+import tempfile
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
@@ -54,12 +56,15 @@ def write_readonly(path: Path, text: str, encoding: str = "utf-8", newline: str 
     the same name replaces the old read-only file instead of failing, and a reader never sees a
     half-written file.
     """
-    tmp = path.with_name(f".{path.name}.tmp")
-    tmp.write_text(text, encoding=encoding, newline=newline)
+    # Random, exclusively created temp file: a pre-planted file or symlink cannot be written through.
+    fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=".report-", suffix=".tmp")
+    tmp = Path(tmp_name)
     try:
+        with os.fdopen(fd, "w", encoding=encoding, newline=newline) as f:
+            f.write(text)
         tmp.chmod(0o444)
         try:
-            os.replace(tmp, path)
+            os.replace(tmp, path)  # replaces a symlink at `path` itself, never follows it
         except PermissionError:  # Windows and some network mounts refuse to replace a read-only file
             remove_report(path)
             os.replace(tmp, path)
@@ -68,9 +73,10 @@ def write_readonly(path: Path, text: str, encoding: str = "utf-8", newline: str 
 
 
 def remove_report(path: Path) -> None:
-    """Delete a report even though it is read-only (unlock, then unlink)."""
+    """Delete a report even though it is read-only (unlock, then unlink). Never follows symlinks."""
     try:
-        path.chmod(0o666)
+        if stat.S_ISREG(path.lstat().st_mode):  # a symlink is unlinked as-is; its target is never chmod-ed
+            path.chmod(0o666)
     except OSError:
         pass
     path.unlink(missing_ok=True)

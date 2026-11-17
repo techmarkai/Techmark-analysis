@@ -522,9 +522,15 @@ class TechmarkRuntime:
         folder = self.report_folder(option)
 
         def write() -> str:
-            folder.mkdir(parents=True, exist_ok=True)
-            path = folder / name
-            write_readonly(path, text, "utf-8-sig", "")  # BOM: Excel opens Unicode correctly
+            try:
+                folder.mkdir(parents=True, exist_ok=True)
+                path = folder / name
+                write_readonly(path, text, "utf-8-sig", "")  # BOM: Excel opens Unicode correctly
+            except OSError as err:
+                raise ValueError(
+                    f"Cannot write {name} to the report folder ({err.strerror or err}). "
+                    "If the file is open in another program, close it and try again."
+                ) from err
             return str(path)
 
         return await self._job(write)

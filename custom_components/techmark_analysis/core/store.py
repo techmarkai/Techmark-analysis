@@ -56,6 +56,8 @@ CREATE TABLE IF NOT EXISTS enroll_verify(visitor_no INTEGER PRIMARY KEY, name TE
   pids TEXT NOT NULL, created REAL NOT NULL);
 CREATE TABLE IF NOT EXISTS enroll_review(visitor_no INTEGER PRIMARY KEY, name TEXT NOT NULL,
   pids TEXT NOT NULL, status TEXT NOT NULL, at REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS enroll_stats(visitor_no INTEGER PRIMARY KEY, score INTEGER, face_px INTEGER,
+  status TEXT NOT NULL, at REAL NOT NULL);
 CREATE TABLE IF NOT EXISTS enroll_losses(id INTEGER PRIMARY KEY, at REAL NOT NULL, reason TEXT NOT NULL,
   count INTEGER NOT NULL);
 """
@@ -274,6 +276,23 @@ class Store:
             " ON CONFLICT(visitor_no) DO UPDATE SET status=excluded.status, pids=excluded.pids, at=excluded.at",
             (visitor_no, name, ",".join(pids), status, _ts(now)),
         ))
+
+    def record_enroll(self, visitor_no: int, score: int | None, face_px: int | None, status: str, now: datetime) -> None:
+        """Score and face width of each enrollment with its camera outcome (to tune the enroll thresholds)."""
+        self._write(lambda db: db.execute(
+            "INSERT INTO enroll_stats(visitor_no, score, face_px, status, at) VALUES(?,?,?,?,?)"
+            " ON CONFLICT(visitor_no) DO UPDATE SET status=excluded.status, at=excluded.at,"
+            " score=COALESCE(excluded.score, score), face_px=COALESCE(excluded.face_px, face_px)",
+            (visitor_no, score, face_px, status, _ts(now)),
+        ))
+
+    def enroll_results(self, limit: int = 30) -> list[dict]:
+        return [
+            {"visitor_no": v, "score": s, "face_px": p, "status": st}
+            for v, s, p, st in self.query(
+                "SELECT visitor_no, score, face_px, status FROM enroll_stats ORDER BY visitor_no DESC LIMIT ?", (limit,)
+            )
+        ]
 
     def reviews(self) -> list[dict]:
         return [

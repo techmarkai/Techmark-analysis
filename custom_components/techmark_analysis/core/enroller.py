@@ -68,6 +68,7 @@ class _Candidate:
     event: FaceUnmatched
     t: float
     jpeg: bytes | None = None
+    face_px: int | None = None
     visitor_no: int | None = None
     attempts: int = 0
     next_try: float = 0.0
@@ -90,6 +91,8 @@ class EnrollPersistence:
     verifying: Callable[[int, str, list[str]], Awaitable[None]]
     finished: Callable[[int], Awaitable[None]]
     review: Callable[[int, str, list[str], str], Awaitable[None]]
+    # (visitor_no, score, face_px, status): score/face_px are None when only the status changes.
+    record: Callable[[int, int | None, int | None, str], Awaitable[None]] | None = None
 
 
 def camera_name(salt: str, visitor_no: int) -> str:
@@ -199,7 +202,7 @@ class Enroller:
     def wants(self, event: FaceUnmatched) -> bool:
         return any((c := self._queue.get(k)) is not None and c.jpeg is None for k in event.ids)
 
-    def attach_crop(self, event: FaceUnmatched, jpeg: bytes) -> None:
+    def attach_crop(self, event: FaceUnmatched, jpeg: bytes, face_px: int | None = None) -> None:
         """Face crop (from the image correlated to `event` by identifier). Scene is not kept."""
         for key in event.ids:
             cand = self._queue.get(key)
@@ -210,6 +213,7 @@ class Enroller:
                 self._lost("overflow")
                 return
             cand.jpeg = jpeg
+            cand.face_px = face_px
             self._bytes += len(jpeg)
             return
 
@@ -291,8 +295,16 @@ class Enroller:
         await self.link(name, cand.visitor_no)
         self.stats["uploaded"] += 1
         await self.persist.verifying(cand.visitor_no, name, pids)
+        await self._record(cand.visitor_no, cand.event.score, cand.face_px, "uploaded")
         self._verify[cand.visitor_no] = _Verify(cand.visitor_no, name, pids, next_try=t + self.cfg.verify_first_seconds)
         return "uploaded"
+
+    async def _record(self, vno: int, score: int | None, face_px: int | None, status: str) -> None:
+        if self.persist.record is not None:
+            try:
+                await self.persist.record(vno, score, face_px, status)
+            except Exception:  # noqa: BLE001 - statistics must never disturb enrollment
+                self.stats["errors"] += 1
 
     async def _check(self, v: _Verify, t: float) -> bool:
         """One modeling-status check. Returns True only on confirmed success. Never re-uploads."""
@@ -307,12 +319,14 @@ class Enroller:
         if state == SUCCESS:
             del self._verify[v.visitor_no]
             await self.persist.finished(v.visitor_no)
+            await self._record(v.visitor_no, None, None, "success")
             self.stats["enrolled"] += 1
             return True
         if state == FAILED:
             del self._verify[v.visitor_no]
             await self.persist.review(v.visitor_no, v.name, v.pids, FAILED)  # retires the number
             await self.persist.finished(v.visitor_no)
+            await self._record(v.visitor_no, None, None, "failed")
             self._lost("modeling_failed")
             return False
         v.checks += 1
@@ -320,6 +334,7 @@ class Enroller:
             del self._verify[v.visitor_no]
             await self.persist.review(v.visitor_no, v.name, v.pids, "unverified")
             await self.persist.finished(v.visitor_no)
+            await self._record(v.visitor_no, None, None, "unverified")
             self._lost("modeling_unverified")
             return False
         v.next_try = t + self.cfg.verify_first_seconds * 2 ** v.checks

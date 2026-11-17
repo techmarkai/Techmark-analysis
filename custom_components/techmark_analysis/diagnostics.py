@@ -29,5 +29,6 @@ async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry) -> dict
             **rt.enroller.stats,
         },
         "enrollment_review": await hass.async_add_executor_job(rt.store.reviews),
+        "enrollment_results": await hass.async_add_executor_job(rt.store.enroll_results),
         "today": {k: v for k, v in rt.today.items() if k != "attendance"},
     }

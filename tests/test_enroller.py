@@ -488,3 +488,25 @@ def test_security_review_fixes(tmp_path):
     assert s.query("SELECT COUNT(*) FROM meta WHERE key='probe'")[0][0] == 0  # rolled back
     s.touch_alive(datetime(2026, 1, 1, tzinfo=timezone.utc))  # store still usable afterwards
     s.close()
+
+
+def test_enrollment_results_record_score_face_px_and_outcome(tmp_path):
+    f = Fake()
+    rec = []
+
+    async def record(*args):
+        rec.append(args)
+
+    f.persist.record = record
+    e = make(f, min_score=55)
+    e.offer(ev("a", 61), 0)
+    e.attach_crop(ev("a", 61), b"jpeg", 97)
+    run(e.tick(1))
+    assert rec == [(1, 61, 97, "uploaded"), (1, None, None, "success")]
+
+    s = Store(str(tmp_path / "e.db"), ZoneInfo("Etc/GMT-3"))
+    now = datetime(2026, 1, 5, 9, tzinfo=timezone.utc)
+    s.record_enroll(1, 61, 97, "uploaded", now)
+    s.record_enroll(1, None, None, "failed", now)  # outcome update keeps score and face width
+    assert s.enroll_results() == [{"visitor_no": 1, "score": 61, "face_px": 97, "status": "failed"}]
+    s.close()

@@ -24,6 +24,11 @@ def _valid_rect(r) -> bool:
 
 
 def prepare_face(scene: bytes, event: FaceUnmatched, min_face_px: int) -> bytes:
+    return prepare_face_info(scene, event, min_face_px)[0]
+
+
+def prepare_face_info(scene: bytes, event: FaceUnmatched, min_face_px: int) -> tuple[bytes, int]:
+    """Crop JPEG plus the detected face width in pixels (kept to learn what the camera accepts)."""
     try:
         from PIL import Image  # noqa: PLC0415 - optional, see module docstring
     except ImportError as err:
@@ -54,5 +59,5 @@ def prepare_face(scene: bytes, event: FaceUnmatched, min_face_px: int) -> bytes:
         buf = io.BytesIO()
         out.save(buf, "JPEG", quality=quality)
         if buf.tell() <= MAX_UPLOAD_BYTES:
-            return buf.getvalue()
+            return buf.getvalue(), round(fw)
     raise FaceUnusable("crop too large")

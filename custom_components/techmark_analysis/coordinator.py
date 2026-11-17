@@ -59,7 +59,7 @@ from .core.enroller import (
     camera_name,
     summarize,
 )
-from .core.facecrop import prepare_face
+from .core.facecrop import prepare_face_info
 from .core.faces import our_enrollments
 from .core.models import (
     FaceCapture,
@@ -123,6 +123,9 @@ class TechmarkRuntime:
                 verifying=lambda vno, name, pids: self._job(self.store.save_verifying, vno, name, pids, dt_util.utcnow()),
                 finished=lambda vno: self._job(self.store.drop_verifying, vno),
                 review=self._enroll_review,
+                record=lambda vno, score, px, status: self._job(
+                    self.store.record_enroll, vno, score, px, status, dt_util.utcnow()
+                ),
             ),
         )
         self._last_snapshot: list[dict] = []
@@ -256,11 +259,11 @@ class TechmarkRuntime:
             if isinstance(owner, FaceUnmatched) and self.enroller.wants(owner):
                 # Crop immediately; the scene image is released and never stored.
                 try:
-                    crop = await self._job(prepare_face, part.body, owner, self.enroller.cfg.min_face_px)
+                    crop, face_px = await self._job(prepare_face_info, part.body, owner, self.enroller.cfg.min_face_px)
                 except FaceUnusable:
                     self.enroller.reject_image(owner)
                 else:
-                    self.enroller.attach_crop(owner, crop)
+                    self.enroller.attach_crop(owner, crop, face_px)
             return
         event = decode(part)
         if event is None:
